@@ -129,16 +129,13 @@ public:
         return NULL;
     }
 };
-feature_node ** combine(feature_node ** ptr_f, struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
+feature_node ** combine(feature_node ** &ptr_f, struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
     cout << "enter combine" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
     cout << "num_sub_pos is " << num_sub_positive[i] <<"   " <<  "num _sub_neg is "<<num_sub_negative[j] << endl;
     ptr_f = new feature_node* [p + q];
     sum = p + q;
     printf("%d, %d\n",num_sub_positive[i], num_sub_negative[j]);
-    for(int k = 0; k < p + q; k++){
-        ptr_f[k] = new feature_node;
-    }
     size_t offset = sizeof(feature_node*) * p;
     feature_node ** tmp = positive_featureMat[i];
     memcpy(ptr_f, tmp ,offset);
@@ -146,7 +143,7 @@ feature_node ** combine(feature_node ** ptr_f, struct feature_node * positive_fe
     printf("quit combine!\n");
     return ptr_f;
 }
-double * getY(double * f, double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
+double * getY(double * &f, double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
     cout << "enter getY" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
     cout << "malloc: p is "<< p <<"  q is  " << q << endl;
@@ -238,10 +235,6 @@ int main(){
             printf("%d\t%d\n",i,j);
             s1[j].param = &param;
             sub_prob[j].x = combine(ptr_f, positive_featureMat,i,negative_featureMat,j);
-            cout << "quit from combine" << endl;
-            /*for(int k = 0; k < sum; k++){
-                delete ptr_f[k];
-            }*/
             cout << "delete elements" << endl;
             delete [] ptr_f;
             prob.y = getY(f,positive_targetVal,i,negative_targetVal,j);
