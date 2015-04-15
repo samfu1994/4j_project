@@ -64,7 +64,7 @@ int min_array[NUM_POSITIVE];
 bool finish;
 int tN;
 int sum;
-feature_node ** ptr_f;
+
 void down(sem_t &x){
     sem_wait(&x);
 }
@@ -129,11 +129,11 @@ public:
         return NULL;
     }
 };
-feature_node ** combine( struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
+feature_node ** combine(feature_node ** ptr_f, struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
     cout << "enter combine" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
     cout << "num_sub_pos is " << num_sub_positive[i] <<"   " <<  "num _sub_neg is "<<num_sub_negative[j] << endl;
-    ptr_f = new feature_node* [p + q];//////////////////////////////////////////////
+    ptr_f = new feature_node* [p + q];
     sum = p + q;
     printf("%d, %d\n",num_sub_positive[i], num_sub_negative[j]);
     for(int k = 0; k < p + q; k++){
@@ -146,9 +146,12 @@ feature_node ** combine( struct feature_node * positive_featureMat[NUM_POSITIVE]
     printf("quit combine!\n");
     return ptr_f;
 }
-double * getY(double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
+double * getY(double * f, double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
+    cout << "enter getY" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
-    double * f  = new double [p + q];
+    cout << "malloc: p is "<< p <<"  q is  " << q << endl;
+    f  = new double [p + q];
+    cout << "getY::start memcpy" << endl;
     size_t offset = sizeof(double) * p;
     memcpy(f, positive_targetVal,offset);
     memcpy(f+offset, negative_targetVal,sizeof(double) * q);
@@ -230,21 +233,25 @@ int main(){
     struct problem sub_prob[NUM_NEGATIVE];
     for(int i = 0; i < NUM_POSITIVE; i++){
         for(int j = 0; j < NUM_NEGATIVE; j++){
+            feature_node ** ptr_f;
+            double * f;
             printf("%d\t%d\n",i,j);
             s1[j].param = &param;
-            sub_prob[j].x = combine(positive_featureMat,i,negative_featureMat,j);
+            sub_prob[j].x = combine(ptr_f, positive_featureMat,i,negative_featureMat,j);
             cout << "quit from combine" << endl;
             /*for(int k = 0; k < sum; k++){
-                delete [] ptr_f[k];
+                delete ptr_f[k];
             }*/
             cout << "delete elements" << endl;
             delete [] ptr_f;
-            cout << "combine finished" << endl;
-            prob.y = getY(positive_targetVal,i,negative_targetVal,j);
+            prob.y = getY(f,positive_targetVal,i,negative_targetVal,j);
+            cout << "333333333333333333" << endl;
+            delete [] f;
             s1[j].prob = &sub_prob[j];
             s1[j].i = i;
             s1[j].j = j;
             pthread_create(&thread[i][j],NULL,func::train_subproblem_helper,&s1[j]);
+            cout << "combine finished" << endl;
         }
         printf("waiting for threads\n");
         for(int j = 0; j < NUM_NEGATIVE; j++){
