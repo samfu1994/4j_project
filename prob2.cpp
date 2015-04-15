@@ -59,7 +59,7 @@ int num_sub_positive[NUM_POSITIVE];
 int num_sub_negative[NUM_NEGATIVE];
 model * mod[NUM_POSITIVE][NUM_NEGATIVE];
 sem_t mutex;
-sem_t count_predict;
+sem_t count_predict[MAX_TESTDATA];
 int min_array[NUM_POSITIVE];
 bool finish;
 int tN;
@@ -115,60 +115,70 @@ public:
     }
     void * predict_problem(void * args){
         int *index = (int *)args;
+        //printf("enter predict_problem index = %d\n",*index);
         int lock;
         down(mutex);
-        sem_getvalue(&count_predict, &lock);
-        up(count_predict);
+        sem_getvalue(&count_predict[*index], &lock);
+        up(count_predict[*index]);
         up(mutex);
         double tmp_result = 1;
         for(int j = 0; j < NUM_NEGATIVE; j++){
             tmp_result = min(tmp_result, predict(mod[lock][j],test_featureMat[*index]));
         }
         min_array[lock] = round(tmp_result);
-
+        //printf("predict_problem over\n");
+        pthread_exit(NULL);
         return NULL;
     }
 };
 feature_node ** combine(feature_node ** &ptr_f, struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
-    cout << "enter combine" << endl;
+    //cout << "enter combine" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
-    cout << "num_sub_pos is " << num_sub_positive[i] <<"   " <<  "num _sub_neg is "<<num_sub_negative[j] << endl;
+    //cout << "num_sub_pos is " << num_sub_positive[i] <<"   " <<  "num _sub_neg is "<<num_sub_negative[j] << endl;
     ptr_f = new feature_node* [p + q];
     sum = p + q;
-    printf("%d, %d\n",num_sub_positive[i], num_sub_negative[j]);
+    //printf("%d, %d\n",num_sub_positive[i], num_sub_negative[j]);
     size_t offset = sizeof(feature_node*) * p;
     feature_node ** tmp = positive_featureMat[i];
     memcpy(ptr_f, tmp ,offset);
     memcpy(ptr_f+offset, negative_featureMat[j],sizeof(feature_node *) * q);
-    printf("quit combine!\n");
+    //printf("quit combine!\n");
     return ptr_f;
 }
 double * getY(double * &f, double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
-    cout << "enter getY" << endl;
+    //cout << "enter getY" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
-    cout << "malloc: p is "<< p <<"  q is  " << q << endl;
+    //cout << "malloc: p is "<< p <<"  q is  " << q << endl;
     f  = new double [p + q];
-    cout << "getY::start memcpy" << endl;
+    //cout << "getY::start memcpy" << endl;
     size_t offset = sizeof(double) * p;
     memcpy(f, positive_targetVal,offset);
     memcpy(f+offset, negative_targetVal,sizeof(double) * q);
     return f;
 }
-double predict_subproblem(struct feature_node ** test_featureMat, int index){
+double predict_subproblem(int index){
+    for(int i = 0; i < NUM_POSITIVE;i++)
+        min_array[i] = 1;
     pthread_t predict_thread[PREDICT_THREAD_NUM];
     for(int i = 0; i < PREDICT_THREAD_NUM; i++){
+    //    printf("predict_subproblem : i = %d\n",i);
         pthread_create(&predict_thread[i], NULL, func::predict_helper, &index);
     }
     for(int i = 0; i < PREDICT_THREAD_NUM; i++){
+    //    printf("join: i = %d\n",i);
         pthread_join(predict_thread[i],NULL);
     }
+    //printf("predict_subproblem: first layer finished!\n");
     int max_result = 0;
     for(int i = 0; i < NUM_POSITIVE; i++){
         max_result = max(max_result, min_array[i]);
     }
     test_predictRes[index] = max_result;
+    //printf("finish predict_subproblem\n");
+    return 0;
 }
 int main(){
+    sem_init(&mutex, 0, 1);
     memset(num_sub_positive,0,sizeof(int) * NUM_POSITIVE);
     memset(num_sub_negative,0,sizeof(int) * NUM_NEGATIVE);
     int N = readData("data/train.txt",lables,features);
@@ -232,19 +242,19 @@ int main(){
         for(int j = 0; j < NUM_NEGATIVE; j++){
             feature_node ** ptr_f;
             double * f;
-            printf("%d\t%d\n",i,j);
+            //printf("%d\t%d\n",i,j);
             s1[j].param = &param;
             sub_prob[j].x = combine(ptr_f, positive_featureMat,i,negative_featureMat,j);
-            cout << "delete elements" << endl;
+            //cout << "delete elements" << endl;
             delete [] ptr_f;
             prob.y = getY(f,positive_targetVal,i,negative_targetVal,j);
-            cout << "333333333333333333" << endl;
+            //cout << "333333333333333333" << endl;
             delete [] f;
             s1[j].prob = &sub_prob[j];
             s1[j].i = i;
             s1[j].j = j;
             pthread_create(&thread[i][j],NULL,func::train_subproblem_helper,&s1[j]);
-            cout << "combine finished" << endl;
+            //cout << "combine finished" << endl;
         }
         printf("waiting for threads\n");
         for(int j = 0; j < NUM_NEGATIVE; j++){
@@ -257,14 +267,15 @@ int main(){
     // PREDICT procss
 
     for(int i = 0; i < tN; i++){
-        test_predictRes[i] = predict_subproblem(test_featureMat,i);
+        //printf("number %d's prediction\n", i);
+        predict_subproblem(i);
     }
     int precise = 0;
     for(int i = 0; i < tN; i++){
         if(test_predictRes[i] == test_targetVal[i])
             precise++;
     }
-    //printf("num %d / %d\n",precise,tN );
+    printf("num %d / %d\n",precise,tN );
     return 0;
 }
 
