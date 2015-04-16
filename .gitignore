@@ -38,3 +38,4 @@ obj
 
 # code blocks file
 *.depend
+*.layout
