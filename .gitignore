@@ -35,3 +35,6 @@ Test.txt
 # output file
 bin
 obj
+
+# code blocks file
+*.depend
