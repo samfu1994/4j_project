@@ -29,8 +29,9 @@
 
 
 #train and test data set
-Train.txt
-Test.txt
+data
+data/*
+
 
 # output file
 bin

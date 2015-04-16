@@ -164,3 +164,62 @@
 	<math.h>
 	"liblinear/linear.h"
 
+1429197648 source:/home/d/kcproj/4j_project/blas/daxpy.c
+	"blas.h"
+
+1429197648 /home/d/kcproj/4j_project/blas/blas.h
+	"blasp.h"
+
+1429197648 /home/d/kcproj/4j_project/blas/blasp.h
+
+1429197648 source:/home/d/kcproj/4j_project/blas/ddot.c
+	"blas.h"
+
+1429197648 source:/home/d/kcproj/4j_project/blas/dnrm2.c
+	<math.h>
+	"blas.h"
+
+1429197648 source:/home/d/kcproj/4j_project/blas/dscal.c
+	"blas.h"
+
+1429197648 source:/home/d/kcproj/4j_project/liblinear/linear.cpp
+	<math.h>
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<stdarg.h>
+	<locale.h>
+	"linear.h"
+	"tron.h"
+
+1429197648 /home/d/kcproj/4j_project/liblinear/linear.h
+
+1429197648 /home/d/kcproj/4j_project/liblinear/tron.h
+
+1429197648 source:/home/d/kcproj/4j_project/liblinear/tron.cpp
+	<math.h>
+	<stdio.h>
+	<string.h>
+	<stdarg.h>
+	"tron.h"
+
+1429197648 source:/home/d/kcproj/4j_project/prob1.cpp
+	<stdio.h>
+	<stdlib.h>
+	<fstream>
+	<vector>
+	"liblinear/linear.h"
+
+1429197648 source:/home/d/kcproj/4j_project/prob2.cpp
+	<iostream>
+	<stdio.h>
+	<stdlib.h>
+	<fstream>
+	<vector>
+	<pthread.h>
+	<semaphore.h>
+	<queue>
+	<string.h>
+	<math.h>
+	"liblinear/linear.h"
+
