@@ -1,4 +1,3 @@
-//how to quit all the threads when we finish the predict precedure?
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,8 +11,8 @@
 #include "liblinear/linear.h"
 
 using namespace std;
-#define NUM_POSITIVE 24
-#define NUM_NEGATIVE 8
+#define NUM_POSITIVE 8
+#define NUM_NEGATIVE 24
 #define CONTAINER_SIZE 3600
 #define PREDICT_THREAD_NUM 8
 #define SCAN_LABLE(fin,l) \
@@ -57,9 +56,11 @@ const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
 int num_sub_positive[NUM_POSITIVE];
 int num_sub_negative[NUM_NEGATIVE];
+double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE];
+double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE];
 model * mod[NUM_POSITIVE][NUM_NEGATIVE];
 sem_t mutex;
-sem_t count_predict[MAX_TESTDATA];
+sem_t count_predict;
 int min_array[NUM_POSITIVE];
 bool finish;
 int tN;
@@ -118,76 +119,58 @@ public:
         //printf("enter predict_problem index = %d\n",*index);
         int lock;
         down(mutex);
-        sem_getvalue(&count_predict[*index], &lock);
-        up(count_predict[*index]);
+        sem_getvalue(&count_predict, &lock);
+        up(count_predict);
         up(mutex);
         double tmp_result = 1;
         for(int j = 0; j < NUM_NEGATIVE; j++){
             tmp_result = min(tmp_result, predict(mod[lock][j],test_featureMat[*index]));
         }
-        min_array[lock] = round(tmp_result);
-        //printf("predict_problem over\n");
+        min_array[lock] = tmp_result;
         pthread_exit(NULL);
         return NULL;
     }
 };
 feature_node ** combine(feature_node ** &ptr_f, struct feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE],int i,struct feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE],int j){
-    //cout << "enter combine" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
-    //cout << "num_sub_pos is " << num_sub_positive[i] <<"   " <<  "num _sub_neg is "<<num_sub_negative[j] << endl;
     ptr_f = new feature_node* [p + q];
     sum = p + q;
-    //printf("%d, %d\n",num_sub_positive[i], num_sub_negative[j]);
     size_t offset = sizeof(feature_node*) * p;
     feature_node ** tmp = positive_featureMat[i];
     memcpy(ptr_f, tmp ,offset);
     memcpy(ptr_f+offset, negative_featureMat[j],sizeof(feature_node *) * q);
-    //printf("quit combine!\n");
     return ptr_f;
 }
 double * getY(double * &f, double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE],int i,double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE],int j){
-    //cout << "enter getY" << endl;
     int p = num_sub_positive[i] - 1, q = num_sub_negative[j] - 1;
-    //cout << "malloc: p is "<< p <<"  q is  " << q << endl;
     f  = new double [p + q];
-    //cout << "getY::start memcpy" << endl;
     size_t offset = sizeof(double) * p;
     memcpy(f, positive_targetVal,offset);
     memcpy(f+offset, negative_targetVal,sizeof(double) * q);
     return f;
 }
 double predict_subproblem(int index){
+    int tmp;
+    sem_getvalue(&count_predict, &tmp);
+    for(int i = 0; i < tmp; i++)
+        sem_trywait(&count_predict);
     for(int i = 0; i < NUM_POSITIVE;i++)
         min_array[i] = 1;
     pthread_t predict_thread[PREDICT_THREAD_NUM];
     for(int i = 0; i < PREDICT_THREAD_NUM; i++){
-    //    printf("predict_subproblem : i = %d\n",i);
         pthread_create(&predict_thread[i], NULL, func::predict_helper, &index);
     }
     for(int i = 0; i < PREDICT_THREAD_NUM; i++){
-    //    printf("join: i = %d\n",i);
         pthread_join(predict_thread[i],NULL);
     }
-    //printf("predict_subproblem: first layer finished!\n");
     int max_result = 0;
     for(int i = 0; i < NUM_POSITIVE; i++){
         max_result = max(max_result, min_array[i]);
     }
     test_predictRes[index] = max_result;
-    //printf("finish predict_subproblem\n");
     return 0;
 }
-int main(){
-    sem_init(&mutex, 0, 1);
-    memset(num_sub_positive,0,sizeof(int) * NUM_POSITIVE);
-    memset(num_sub_negative,0,sizeof(int) * NUM_NEGATIVE);
-    int N = readData("data/train.txt",lables,features);
-    wrapData(lables,features,featureMat,targetVal);
-
-    tN = readData("data/test.txt",test_lables,test_features);
-    wrapData(test_lables,test_features,test_featureMat,test_targetVal);
-
-    // TRAIN procss
+void mytrain(struct feature_node **featureMat, double *targetVal, int N){
     struct problem prob;
     prob.l = N;
     prob.n = NUM_FEATURE;
@@ -205,24 +188,28 @@ int main(){
     param.weight_label = NULL;
     int num_lines_train = lables.size();
     int num_train_negative = 0, num_train_positive = 0;
-    pthread_t thread[NUM_POSITIVE][NUM_NEGATIVE];
     feature_node * positive_featureMat[NUM_POSITIVE][CONTAINER_SIZE] = {0};
     feature_node * negative_featureMat[NUM_NEGATIVE][CONTAINER_SIZE] = {0};
-    double positive_targetVal[NUM_POSITIVE][CONTAINER_SIZE];
-    double negative_targetVal[NUM_NEGATIVE][CONTAINER_SIZE];
-    memset(positive_targetVal,1,NUM_POSITIVE * CONTAINER_SIZE * sizeof(double));
-    memset(negative_targetVal,0,NUM_NEGATIVE * CONTAINER_SIZE * sizeof(double));
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        for(int j = 0; j < CONTAINER_SIZE; j++){
+            positive_targetVal[i][j] = 1;
+        }
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < CONTAINER_SIZE; j++){
+            negative_targetVal[i][j] = 0;
+        }
+    }
     int thread_count = 0;
     int pos_data[NUM_POSITIVE][CONTAINER_SIZE];//27876 / 8 = 3485
     int neg_data[NUM_NEGATIVE][CONTAINER_SIZE];
-    //int num_round_positive = 0, num_round_negative = 0;
     for(int i = 0; i < num_lines_train; i++){
-        if(round(targetVal[i]) == 1){
+        if(targetVal[i] == 1){
             positive_featureMat[num_train_positive % NUM_POSITIVE][num_sub_positive[num_train_positive % NUM_POSITIVE]] = featureMat[i];
             num_sub_positive[num_train_positive % NUM_POSITIVE]++;
             num_train_positive++;
         }
-        else if(round(targetVal[i]) == 0){
+        else if(targetVal[i] == 0){
             negative_featureMat[num_train_negative % NUM_NEGATIVE][num_sub_negative[num_train_negative % NUM_NEGATIVE]] = featureMat[i];
             num_sub_negative[num_train_negative % NUM_NEGATIVE]++;
             num_train_negative++;
@@ -236,38 +223,50 @@ int main(){
         printf("%s\n",errcode);
     }
     printf("start trainning\n");
+    //mytrain(param, prob,positive_featureMat,negative_featureMat);
+    pthread_t thread[NUM_POSITIVE][NUM_NEGATIVE];
     struct s s1[NUM_NEGATIVE];
     struct problem sub_prob[NUM_NEGATIVE];
     for(int i = 0; i < NUM_POSITIVE; i++){
         for(int j = 0; j < NUM_NEGATIVE; j++){
             feature_node ** ptr_f;
             double * f;
-            //printf("%d\t%d\n",i,j);
             s1[j].param = &param;
             sub_prob[j].x = combine(ptr_f, positive_featureMat,i,negative_featureMat,j);
-            //cout << "delete elements" << endl;
             delete [] ptr_f;
             prob.y = getY(f,positive_targetVal,i,negative_targetVal,j);
-            //cout << "333333333333333333" << endl;
             delete [] f;
             s1[j].prob = &sub_prob[j];
             s1[j].i = i;
             s1[j].j = j;
             pthread_create(&thread[i][j],NULL,func::train_subproblem_helper,&s1[j]);
-            //cout << "combine finished" << endl;
         }
         printf("waiting for threads\n");
         for(int j = 0; j < NUM_NEGATIVE; j++){
             pthread_join(thread[i][j],NULL);
         }
         printf("for i = %d, threads are finished\n", i);
-
     }
     printf("training is over\n");
+    return;
+}
+int main(){
+    sem_init(&mutex, 0, 1);
+    for(int i = 0 ; i < NUM_POSITIVE; i++)
+        num_sub_positive[i] = 0;
+    for(int i = 0;i < NUM_NEGATIVE; i++)
+        num_sub_negative[i] = 0;
+    int N = readData("data/train.txt",lables,features);
+    wrapData(lables,features,featureMat,targetVal);
+
+    tN = readData("data/test.txt",test_lables,test_features);
+    wrapData(test_lables,test_features,test_featureMat,test_targetVal);
+
+    // TRAIN procss
+    mytrain(featureMat,targetVal, N);
     // PREDICT procss
 
     for(int i = 0; i < tN; i++){
-        //printf("number %d's prediction\n", i);
         predict_subproblem(i);
     }
     int precise = 0;
@@ -288,9 +287,9 @@ void wrapData(const vector< vector<lable_node> > &lables, \
     for(int i = 0; i < N; i++){
         featureMat[i] = (feature_node*)features[i].data();
         if(lables[i][0].Section == 'A')
-            targetVal[i] = 0;
-        else
             targetVal[i] = 1;
+        else
+            targetVal[i] = 0;
     }
 }
 
