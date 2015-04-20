@@ -223,3 +223,26 @@
 	<math.h>
 	"liblinear/linear.h"
 
+1429199652 source:/home/d/kcproj/4j_project/src/threads.c
+	"threads.h"
+
+1429502295 /home/d/kcproj/4j_project/src/threads.h
+	<pthread.h>
+	<stdio.h>
+	<stdlib.h>
+	<queue>
+	<vector>
+	<list>
+	<semaphore.h>
+
+1429502435 source:/home/d/kcproj/4j_project/src/threads.cpp
+	"threads.h"
+
+1429502491 source:/home/d/kcproj/4j_project/prob.cpp
+	<stdio.h>
+	<stdlib.h>
+	<fstream>
+	<vector>
+	"liblinear/linear.h"
+	"src/threads.h"
+

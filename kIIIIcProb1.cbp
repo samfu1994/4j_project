@@ -12,6 +12,7 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
+					<Add option="-std=c++11" />
 					<Add option="-g" />
 				</Compiler>
 				<Linker>
@@ -37,8 +38,9 @@
 		</Unit>
 		<Unit filename="liblinear/linear.cpp" />
 		<Unit filename="liblinear/tron.cpp" />
-		<Unit filename="prob1.cpp" />
-		<Unit filename="prob2.cpp" />
+		<Unit filename="prob.cpp" />
+		<Unit filename="src/threads.cpp" />
+		<Unit filename="src/threads.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />
