@@ -23,6 +23,7 @@ private:
     pthread_t               *tids;
     int                     jobCount;
     threadP                 *threadParam;
+    bool                    stopThread;
 
     static void * threadFunc(void *);
 public:
@@ -30,6 +31,8 @@ public:
     threads(int _max_thhreadNum);
     void addJob( void*(*)(void *) , void * );
     void wait(void);
+    // safely stop threads
+    void stop(void);
 };
 
 struct threadP{

@@ -12,6 +12,7 @@ threads::threads(int _max){
     err |= sem_init(&semTasks,0,0);
     err |= sem_init(&alljobs,0,0);
 
+    stopThread = false;
     tids        = new pthread_t[max_thhreadNum];
     threadParam = new threadP[max_thhreadNum];
 
@@ -32,9 +33,12 @@ void* threads::threadFunc(void *p){
     threads     * th = ((threadP*)p)->th;
     void        * param;
     void*(*func)(void *);
-    printf("thread running\n");
     while(1){
         sem_wait(&th->semTasks);
+        if(th->stopThread){
+            sem_post(&th->semTasks);
+            break;
+        }
         sem_wait(&th->queueMutex);
             param = th->taskParam.back();
             func  = th->tasks.back();
@@ -49,6 +53,8 @@ void* threads::threadFunc(void *p){
 
 
 void threads::addJob(void*(*func)(void *) ,void * param){
+    if(stopThread)
+        return;
     sem_wait(&queueMutex);
         tasks.push_front(func);
         taskParam.push_front(param);
@@ -59,9 +65,32 @@ void threads::addJob(void*(*func)(void *) ,void * param){
 
 
 void threads::wait(){
-    for(int i = 0; i < jobCount; i++){
+    for(;jobCount > 0; jobCount--){
         sem_wait(&alljobs);
     }
 }
+
+
+void threads::stop(void){
+    wait();
+    stopThread = true;
+    sem_post(&semTasks);
+    for(int i = 0; i < max_thhreadNum; i++){
+        pthread_join(tids[i],NULL);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
