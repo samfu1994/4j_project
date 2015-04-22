@@ -93,6 +93,10 @@ int classify_1(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
         vector<vector<double> > &retTargetval);
+int classify_2(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval);
 int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<vector<double> > &gTargetval , \
         vector<parameter> &retParam, \
@@ -127,7 +131,7 @@ int main(){
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
     // classify trainning data
-    classify_1(lables,features,gFeature,gTargetval);
+    classify_2(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
 
     // train
@@ -310,7 +314,6 @@ int classify_1(vector< vector<lable_node> > &lables, \
     vector<vector<double> >         negVals;
     vector<feature_node*>           possGroups;
     vector<double>                  possVals;
-    printf("classify\n");
     // get single poss and negtive groups
     for(int i = 0; i < (int)lables.size(); i++){
         if(lables[i][0].Section == 'A'){
@@ -326,24 +329,94 @@ int classify_1(vector< vector<lable_node> > &lables, \
             negVals[secToIndex[lables[i][0].Section]].push_back(-1);
         }
     }
-    printf("group finished\n");
     NUM_POSITIVE = 1;
     NUM_NEGATIVE = (int)negGroups.size();
     NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
-    printf("numOf groups %d\n", NUM_GROUP);
     // retFeature.reserve(NUM_GROUP);
     // retTargetval.reserve(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
         retFeature.push_back(possGroups);
         retTargetval.push_back(possVals);
     }
-    printf("group first step\n");
     for(int i = 0; i < NUM_NEGATIVE; i++){
         for(int j = 0; j < (int)negGroups[i].size(); j++){
             retFeature[i].push_back(negGroups[i][j]);
             retTargetval[i].push_back(negVals[i][j]);
         }
     }
-    printf("classify finished\n");
     return 0;
 }
+
+
+/*
+this group the data with the same Class together.
+So there is only one possitive group, and serveral negiive group
+the code of class is like this:
+    numOfClass = SectionNUm * 100 + classNum;
+Since classNUm is a two digit number, it is enough to do so
+*/
+int classify_2(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<int, int>                   secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<vector<feature_node*> >  possGroups;
+    vector<vector<double> >         possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    int code;
+    for(int i = 0; i < (int)lables.size(); i++){
+        for(int j = 0; j < (int)lables[i].size(); j++){
+           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
+           if(lables[i][0].Section == 'A'){
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)possGroups.size();
+                    possGroups.push_back(vector<feature_node*>());
+                    possVals.push_back(vector<double>());
+                }
+                possGroups[secToIndex[code]].push_back(features[i].data());
+                possVals[secToIndex[code]].push_back(1);
+           }else{
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)negGroups.size();
+                    negGroups.push_back(vector<feature_node*>());
+                    negVals.push_back(vector<double>());
+                }
+                negGroups[secToIndex[code]].push_back(features[i].data());
+                negVals[secToIndex[code]].push_back(1);
+           }
+        }
+    }
+    printf("group finished\n");
+    NUM_POSITIVE = (int)possGroups.size();
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(vector<feature_node*>());
+        retTargetval.push_back(vector<double>());
+    }
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        for(int j = 0; j < (int)possGroups[i].size(); j++){
+            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
+                retFeature[k].push_back(possGroups[i][j]);
+                retTargetval[k].push_back(1);
+            }
+        }
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
+                retFeature[k].push_back(negGroups[i][j]);
+                retTargetval[k].push_back(-1);
+            }
+        }
+    }
+    return 0;
+}
+
