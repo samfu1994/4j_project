@@ -5,6 +5,7 @@
 #include "liblinear/linear.h"
 #include "src/threads.h"
 #include <string.h>
+#include <map>
 
 using namespace std;
 /* micro defination */
@@ -70,9 +71,9 @@ struct preadictThreadParams{
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-const int NUM_POSITIVE = 50;
-const int NUM_NEGATIVE = 150;
-const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
+      int NUM_POSITIVE = 50;
+      int NUM_NEGATIVE = 150;
+      int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
@@ -85,6 +86,10 @@ int readData(const char * fileName, \
 int getTargetVal(vector<vector<lable_node> > & labs, \
         vector<double>& retVal);
 int classify(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval);
+int classify_1(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
         vector<vector<double> > &retTargetval);
@@ -122,7 +127,7 @@ int main(){
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
     // classify trainning data
-    classify(lables,features,gFeature,gTargetval);
+    classify_1(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
 
     // train
@@ -270,7 +275,7 @@ int classify(vector< vector<lable_node> > &lables, \
         retFeature.push_back(vector<feature_node*>());
     }
     // classify data
-    for (unsigned int i = 0; i < features.size(); ++i){
+    for (int i = 0; i < (int)features.size(); ++i){
         if(lables[i][0].Section == 'A'){
             for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
                 retFeature[j].push_back(features[i].data());
@@ -287,5 +292,58 @@ int classify(vector< vector<lable_node> > &lables, \
             counterN = counterN % NUM_NEGATIVE;
         }
     }
+    return 0;
+}
+
+// this group the data with the same section together.
+// So there is only one possitive group, and serveral negiive group
+int classify_1(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<char, int>                  secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<feature_node*>           possGroups;
+    vector<double>                  possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    for(int i = 0; i < (int)lables.size(); i++){
+        if(lables[i][0].Section == 'A'){
+            possGroups.push_back(features[i].data());
+            possVals.push_back(1);
+        }else{
+            if(secToIndex.find(lables[i][0].Section) == secToIndex.end()){
+                secToIndex[lables[i][0].Section] = (int)negGroups.size();
+                negGroups.push_back(vector<feature_node*>());
+                negVals.push_back(vector<double> ());
+            }
+            negGroups[secToIndex[lables[i][0].Section]].push_back(features[i].data());
+            negVals[secToIndex[lables[i][0].Section]].push_back(-1);
+        }
+    }
+    printf("group finished\n");
+    NUM_POSITIVE = 1;
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    printf("numOf groups %d\n", NUM_GROUP);
+    // retFeature.reserve(NUM_GROUP);
+    // retTargetval.reserve(NUM_GROUP);
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(possGroups);
+        retTargetval.push_back(possVals);
+    }
+    printf("group first step\n");
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            retFeature[i].push_back(negGroups[i][j]);
+            retTargetval[i].push_back(negVals[i][j]);
+        }
+    }
+    printf("classify finished\n");
     return 0;
 }
