@@ -57,20 +57,25 @@ struct trainThreadParams{
         retData = _retData;
     }
 };
+struct preadictThreadParams{
+    vector<model*> * mod;
+    feature_node* f;
+    double * retVal;
+    preadictThreadParams(vector<model*> *_mod, feature_node* _f,double*ret){
+        mod = _mod;
+        f = _f;
+        retVal = ret;
+    }
+};
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-const int NUM_POSITIVE = 2;
-const int NUM_NEGATIVE = 4;
+const int NUM_POSITIVE = 50;
+const int NUM_NEGATIVE = 150;
 const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
-
-/* global variables */
-vector<vector<feature_node> >     features;
-vector<vector<lable_node> >       lables;
-vector<double>                         targetVal;
 
 /* function prototype */
 
@@ -89,42 +94,94 @@ int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<problem>  &retProb \
 );
 void * trainThreadFunc(void *);
+void * predictThreadFunc(void *);
 
 /* functions */
 int main(){
+    // rew train data
+    vector<vector<feature_node> >       features;
+    vector<vector<lable_node> >         lables;
+    vector<double>                      targetVal;
+    // raw test data
+    vector<double>                      tTargetval;
+    vector<vector<feature_node> >       tFeatures;
+    vector<vector<lable_node> >         tLables;
+    vector<double>                      predictTargetVal;
+    // train var
     vector<vector<double> >             gTargetval;
     vector< vector<feature_node* > >    gFeature;
     vector<parameter>                   gParam;
     vector<problem>                     gProb;
     vector<model*>                      gmodel;
-    threads poll(8);
+    // test var
+    threads                             poll(8);
 
     // read data
-    int N = readData("data/train.txt",lables,features);
+    readData("data/train.txt",lables,features);
+    readData("data/test.txt",tLables,tFeatures);
     getTargetVal(lables,targetVal);
+    getTargetVal(tLables,tTargetval);
+    // classify trainning data
     classify(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
 
-    // predict
+    // train
     getGroupParam(gFeature,gTargetval,gParam,gProb);
     gmodel.reserve(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
-        poll.addJob(trainThreadFunc,new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
+        poll.addJob(trainThreadFunc,\
+            new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
     }
-
+    poll.wait();
+    //predict
+    predictTargetVal.reserve(tTargetval.size());
+    for(unsigned int i = 0; i < tFeatures.size(); i++){
+        poll.addJob(predictThreadFunc,\
+            new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
+    }
     poll.stop();
+    int classifyCorrect = 0;
+    for(int i = 0; i < (int)tTargetval.size();i++){
+        if(tTargetval[i] == predictTargetVal[i])
+            classifyCorrect++;
+    }
+    printf("FINAL RESULT %f\n",(double)classifyCorrect / (double)tTargetval.size());
     return 0;
+}
+
+void * predictThreadFunc(void *p){
+    preadictThreadParams *  pp = (preadictThreadParams*)p;
+    vector<model*>&         mod = *(pp->mod);
+    vector<double>          mins;
+    mins.reserve(NUM_POSITIVE);
+    // MIN
+    double t;
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        t = predict(mod[i],pp->f);
+        for(int j = i+NUM_POSITIVE; j < NUM_GROUP;j+=NUM_POSITIVE){
+            t = min(t,predict(mod[j],pp->f));
+        }
+        mins[i] = t;
+    }
+    // MAX
+    t = mins[0];
+    for(int i = 1;i < NUM_POSITIVE;i++){
+        t = max(t,mins[i]);
+    }
+    *(pp->retVal) = t;
+    delete pp;
+    return NULL;
 }
 void * trainThreadFunc(void * p){
     trainThreadParams * pa = (trainThreadParams*)p;
     *(pa->retData) = train(pa->prob,pa->param);
+    delete pa;
     return NULL;
 }
 int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<vector<double> > &gTargetval , \
         vector<parameter> &retParam, \
-        vector<problem>  &retProb \
-)
+        vector<problem>  &retProb )
 {
     retParam.clear();
     retProb.clear();

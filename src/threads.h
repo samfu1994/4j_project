@@ -20,10 +20,12 @@ private:
     sem_t                   queueMutex;
     sem_t                   semTasks;
     sem_t                   alljobs;
+    sem_t                   maxJobs;
     pthread_t               *tids;
     int                     jobCount;
     threadP                 *threadParam;
     bool                    stopThread;
+    int                     numMaxJobs;
 
     static void * threadFunc(void *);
 public:
