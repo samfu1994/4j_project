@@ -134,8 +134,7 @@ int classify_2(vector< vector<lable_node> > &lables, \
 int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<vector<double> > &gTargetval , \
         vector<parameter> &retParam, \
-        vector<problem>  &retProb \
-);
+        vector<problem>  &retProb );
 void * trainThreadFunc(void *);
 void * predictThreadFunc(void *);
 predictResult getPredictRes(vector<double> &targetVal, \
@@ -145,8 +144,13 @@ void getRoc(threads &poll, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
         void*(*func)(void*), \
-        std::vector<double> &bias ,\
+        vector<double> &bias ,\
         predictResult & retVal );
+vector<double> autuRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        void*(*func)(void*) );
 
 /* functions */
 int main(){
@@ -185,7 +189,7 @@ int main(){
             new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
     }
     poll.wait();
-    //predict
+    // predict
     predictTargetVal.reserve(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
         poll.addJob(predictThreadFunc,\
@@ -194,21 +198,10 @@ int main(){
     poll.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
-    std::vector<double> bias;
-    bias.push_back(-2);
-    bias.push_back(-1);
-    bias.push_back(-0.5);
-    bias.push_back(-0.25);
-    bias.push_back(-0.125);
-    bias.push_back(0);
-    bias.push_back(0.125);
-    bias.push_back(0.25);
-    bias.push_back(0.5);
-    bias.push_back(0.75);
-    bias.push_back(1);
-    bias.push_back(1.125);
-    bias.push_back(1.25);
+    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
 
+    // get roc
+    printf("GETROC\n");
     getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
     for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
@@ -216,12 +209,82 @@ int main(){
     poll.stop();
     return 0;
 }
+// make sure that there are enough 
+vector<double> autuRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        void*(*func)(void*) )
+{
+    vector< feature_node* > sampleFeatures;
+    vector<double> sampleTargetval;
+    vector<double> bias;
+    vector<double> sampleTPR;
+    vector<double> sampleFPR;
+    sampleFPR.push_back(1);
+    sampleFPR.push_back(0);
+    sampleTPR.push_back(1);
+    sampleTPR.push_back(0);
+    bias.push_back(-4);
+    bias.push_back(4);
+    int perm = 49597; // a large prime number to get the permution
+    int numTotalSize = (int)tFeatures.size();
+    int numSamples = numTotalSize / 40;
+    for(int i = 0; i < numSamples; i++){
+        sampleFeatures.push_back(tFeatures[(i * perm) % numTotalSize].data());
+        sampleTargetval.push_back(tTargetval[(i * perm) % numTotalSize]);
+    }
+    double diff;
+    double b;
+    int sapa;
+    vector<double> predictTargetVal;
+    predictTargetVal.reserve(sampleFeatures.size());
+    while(1){
+        sapa = 0;
+        for(int i = 1; i < (int)sampleTPR.size(); i++){
+            diff = sampleTPR[i-1] - sampleTPR[i];
+            diff = max(diff,  sampleFPR[i-1] - sampleFPR[i]);
+            if(diff > 0.2){
+                sapa = i;
+                break;
+            }
+        }
+        if(sapa){
+            b = (bias[sapa]+bias[sapa-1])/2;
+        }else{
+            break;
+        }
+        for(unsigned int i = 0; i < sampleFeatures.size(); i++){
+            poll.addJob(func,\
+                    new preadictThreadParams(&gmodel, \
+                            sampleFeatures[i], \
+                            &(predictTargetVal[i]), \
+                            b));
+        }
+        poll.wait();
+        predictResult pr = getPredictRes(sampleTargetval,predictTargetVal);
+        // printf("%f %f %f \n", b, pr.TPR, pr.FPR);
+        sampleFPR.insert(sampleFPR.begin()+sapa,pr.FPR);
+        sampleTPR.insert(sampleTPR.begin()+sapa,pr.TPR);
+        bias.insert(bias.begin()+sapa,b);
+    }
+    for(int i = 0; i < (int)bias.size();){
+        if((sampleFPR[i] == 1 && sampleTPR[i]==1) || (sampleFPR[i] == 0 && sampleTPR[i]==0)){
+            sampleFPR.erase(sampleFPR.begin()+i);
+            sampleTPR.erase(sampleTPR.begin()+i);
+            bias.erase(bias.begin()+i);
+        }else{
+            i++;
+        }
+    }
+    return bias;
+}
 void getRoc(threads &poll, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
         void*(*func)(void*), \
-        std::vector<double> &bias ,\
+        vector<double> &bias ,\
         predictResult & retVal )
 {
     vector<double> predictTargetVal;
@@ -324,7 +387,6 @@ int getGroupParam(vector< vector<feature_node* > > &gFeature , \
     }
     return 0;
 }
-
 int readData(const char * fileName, \
         vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features)
