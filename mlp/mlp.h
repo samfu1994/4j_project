@@ -10,6 +10,9 @@
 #ifndef _MLP_H_
 #define _MLP_H_
 
+ #include <vector>
+ using namespace std;
+
 
 struct Neuron {
   double  x;     /* sortie */
@@ -60,7 +63,7 @@ public:
 
   int Train(const char* fnames);
   int Test (const char* fname);
-  int Evaluate();
+  double predict(std::vector<double> features);
 
   void Run(const char* fname, const int& maxiter);
 
