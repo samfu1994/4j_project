@@ -684,7 +684,7 @@ VectorXd * unroll(MatrixXd * one, MatrixXd * two){
 }
 MatrixXd * initialize_para(int input_size, int output_size){
 	srand(time(NULL));
-	int epsilon = 0.12;
+	int epsilon = 0.10;
 	MatrixXd * mat = new MatrixXd(input_size, output_size);
 	for(int i = 0; i < input_size; i++){
 		for(int j = 0; j < output_size; j++){
