@@ -17,7 +17,7 @@ int main(int argc, char* argv[])
 
  int layers2[] = {1,100,1};
  MultiLayerPerceptron mlp2(3,layers2);
- mlp2.Run("sin.dat",5000);
+ mlp2.Run("data/sin.txt",5000);
 
   return 0;
 }

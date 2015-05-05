@@ -10,8 +10,9 @@
 #ifndef _MLP_H_
 #define _MLP_H_
 
- #include <vector>
- using namespace std;
+#include <vector>
+#include "../liblinear/linear.h"
+using namespace std;
 
 
 struct Neuron {
@@ -62,6 +63,7 @@ public:
   ~MultiLayerPerceptron();
 
   int Train(const char* fnames);
+  int Train(const struct problem *prob,const struct parameter *param);
   int Test (const char* fname);
   double predict(std::vector<double> features);
 

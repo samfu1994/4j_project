@@ -424,9 +424,11 @@ int MultiLayerPerceptron::Test(const char* fname)
 
 double MultiLayerPerceptron::predict(std::vector<double> features){
     double out;
+    double *input  = new double[pLayers[0].nNumNeurons];
     SetInputSignal(features.data());
     PropagateSignal();
     GetOutputSignal(&out);
+    if(input)  delete[] input;
     return out;
 }
 

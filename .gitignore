@@ -36,6 +36,7 @@ data/*
 # output file
 bin
 obj
+build
 
 # code blocks file
 *.depend
