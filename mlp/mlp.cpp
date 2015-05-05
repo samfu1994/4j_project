@@ -326,7 +326,9 @@ int MultiLayerPerceptron::Train(const struct problem *prob,const struct paramete
     for (int i = 0; i < prob->l; ++i){
         target[0] = prob->y[i];
         ConvertFeatureNode(prob->x[i],input);
+        printf("Simulate %d\n", i);
         Simulate(input,output,target,true);
+        printf("finished simu %d\n", i);
     }
     if(input)  delete[] input;
     if(output) delete[] output;
@@ -392,6 +394,23 @@ int MultiLayerPerceptron::Train(const char* fname)
   return count;
 }
 
+int MultiLayerPerceptron::Test(const struct problem *prob,const struct parameter *param){
+    double val;
+
+    for (int i = 0; i < prob->l; ++i){
+        val = predict(prob->x[i]);
+        if(val >= 0){
+            val = 1;
+        }else{
+            val = -1;
+        }
+        if(val != prob->y[i]){
+            dAvgTestError++;
+        }
+    }
+    dAvgTestError /= prob->l;
+    return 0;
+}
 int MultiLayerPerceptron::Test(const char* fname)
 {
   int count = 0;
@@ -476,7 +495,41 @@ double MultiLayerPerceptron::predict(const struct feature_node *x){
     return retval;
 }
 
-void MultiLayerPerceptron::Run(const char* fname, const int& maxiter)
+void MultiLayerPerceptron::Run(const struct problem *prob,const struct parameter *param,int maxiter){
+    int    countTrain = 0;
+    bool   Stop = false;
+    bool   firstIter = true;
+    double dMinTestError;
+
+    InitializeRandoms();
+    RandomWeights();
+    do {
+        Train(prob,param);
+        Test(prob,param);
+        countTrain++;
+        if(firstIter){
+            dMinTestError = dAvgTestError;
+            firstIter = false;
+        }
+        printf( "%i \t TestError: %f", countTrain, dAvgTestError);
+        if ( dAvgTestError < dMinTestError) {
+            printf(" -> saving weights\n");
+            dMinTestError = dAvgTestError;
+            SaveWeights();
+        }
+        else if (dAvgTestError > 1.2 * dMinTestError) {
+            printf(" -> stopping training and restoring weights\n");
+            Stop = true;
+            RestoreWeights();
+        }
+        else{
+            printf(" -> ok\n");
+        }
+    } while ( (!Stop) && (countTrain<maxiter) );
+
+}
+
+void MultiLayerPerceptron::Run(const char* fname, const int maxiter)
 {
   int    countTrain = 0;
   int    countLines = 0;

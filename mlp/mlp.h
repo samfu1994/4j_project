@@ -66,10 +66,11 @@ public:
   int Train(const char* fnames);
   int Train(const struct problem *prob,const struct parameter *param);
   int Test (const char* fname);
+  int Test (const struct problem *prob,const struct parameter *param);
   double predict(const struct feature_node *x);
 
-  void Run(const char* fname, const int& maxiter);
-
+  void Run(const char* fname, const int maxiter);
+  void Run(const struct problem *prob,const struct parameter *param, int maxiter);
 };
 
 #endif
