@@ -6,8 +6,15 @@
 #include "src/threads.h"
 #include <string.h>
 #include <map>
-
+#include "eigen/Eigen/Dense"
+#include "eigen/unsupported/Eigen/MatrixFunctions"
 using namespace std;
+using Eigen::MatrixXd;
+using Eigen::Matrix;
+using Eigen::VectorXd;
+const int input_layer_size = 5000;
+const int hidden_layer_size = 200;
+const int num_labels = 2;
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
         (fscanf(fin, \
@@ -209,7 +216,7 @@ int main(){
     poll.stop();
     return 0;
 }
-// make sure that there are enough 
+// make sure that there are enough
 vector<double> autuRoc(threads &poll, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
@@ -587,5 +594,103 @@ int classify_2(vector< vector<lable_node> > &lables, \
         }
     }
     return 0;
+}
+MatrixXd * initialize_para(int input_size, int output_size);
+VectorXd * unroll(MatrixXd *, MatrixXd *);
+double nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd * y, int lamda, int l);
+MatrixXd * getX(vector< vector<feature_node> >&features, int l){
+    MatrixXd * X = new MatrixXd(l, input_layer_size);
+    for(int i = 0; i < l; i++){
+        int n = 0;
+        int length_of_each = features[i].size();
+        for(int j = 0; j < input_layer_size; j++){
+            (*X)(i, j) = 0;
+            if(n == length_of_each)
+                continue;
+            if(features[i][n].index == j){
+                n++;
+                (*X)(i, j) = features[i][j].value;
+            }
+        }
+    }
+    return X;
+
+}
+VectorXd * getY(vector< vector<lable_node> > &lables, int l){
+	VectorXd * y = 	new VectorXd(l);
+	for(int i = 0 ; i < l ;i++){
+        if(lables[i][0].Section == 'A'){
+            (*y)(i) = 1;
+        }
+        else{
+            (*y)(i) = 2;
+        }
+	}
+	return y;
+}
+void nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+    int l = lables.size();
+	MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
+	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+	//VectorXd * initial_param = unroll(Theta1, Theta2);
+	int lamda = 1;
+	MatrixXd * X = getX(features, l);
+	VectorXd * y = getY(lables, l);
+	double J = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
+}
+MatrixXd sigmoid(MatrixXd mat){
+    /*int r = mat.rows(), c = mat.cols();
+    for(int i = 0; i < r; i++){
+        for(int j = 0; j < c; j++){
+            mat(i, j) = 1 / (1 + exp(mat(i, j)));
+        }
+    }*/
+    mat = 1 / (1 + exp(-mat));
+    return mat;
+}
+double nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
+	MatrixXd tmp_x = *X;
+	MatrixXd t(l,1);
+	for(int i = 0; i < l; i++)
+        t(i,1) = 1;
+	tmp_x << t, tmp_x;
+	MatrixXd a1,z2, a2, z3, a3;
+	a1 = tmp_x;
+	z2 = a1 * Theta1 -> transpose();
+	a2 = sigmoid(z2);
+	MatrixXd t2(a2.rows(), 1);
+	a2 << t2, a2;
+	z3 = a2 * Theta2 -> transpose();
+	a3 = sigmoid(z3);
+    MatrixXd yy(a3.rows(),a3.cols());
+    for(int i = 0; i < a3.rows(); i++)
+        for(int j = 0; j < a3.cols(); j++)
+            yy(i, j) = 0;
+
+    for(int i = 0; i < a3.rows(); i++){
+        yy(i, y(i)) = 1;
+    }
+    MatrixXd tmp3 = -(log(a3).cwiseproduct(yy) + (1 - yy).cwiseproduct(log(1 - a3)));
+    int s = tmp3.sum();
+    return s;
+}
+VectorXd * unroll(MatrixXd * one, MatrixXd * two){
+	VectorXd * tmp = new VectorXd(one -> rows() * one -> cols() + two -> rows() + two -> cols());
+	for(int i = 0; i < one -> cols(); i++){
+		for(int j = 0; j < one -> rows(); j++){
+			(*tmp)(i * one -> rows() + j) = (*one)(j,i);
+		}
+	}
+}
+MatrixXd * initialize_para(int input_size, int output_size){
+	srand(time(NULL));
+	int epsilon = 0.12;
+	MatrixXd * mat = new MatrixXd(input_size, output_size);
+	for(int i = 0; i < input_size; i++){
+		for(int j = 0; j < output_size; j++){
+			(*mat)(i,j) = rand()%1000 / 1000 * 2 * epsilon - epsilon;
+		}
+	}
+	return mat;
 }
 
