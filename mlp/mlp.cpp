@@ -30,17 +30,17 @@ double RandomEqualREAL(double Low, double High)
   return ((double) rand() / RAND_MAX) * (High-Low) + Low;
 }
 
-MultiLayerPerceptron::MultiLayerPerceptron(int nl, int npl[]) : 
-  nNumLayers(0),
-  pLayers(0),
-  dEta(0.25),
-  dAlpha(0.9),
-  dGain(1.0),
-  dMSE(0.0),
-  dMAE(0.0),
-  dAvgTestError(0.0)
-{
+MultiLayerPerceptron::MultiLayerPerceptron(int nl, int npl[]){
   int i,j;
+
+  nNumLayers = 0;
+  pLayers = 0;
+  dEta = 0.20;
+  dAlpha = 0.8;
+  dGain = 1.0;
+  dMSE = 0.0;
+  dMAE = 0.0;
+  dAvgTestError = 0.0;
   
   /* --- création des couches */
   nNumLayers = nl;
@@ -302,6 +302,38 @@ bool read_number(FILE* fp, double* number)
   return true;
 }
 
+void MultiLayerPerceptron::ConvertFeatureNode(const struct feature_node *x, double *t){
+    int n = pLayers[0].nNumNeurons;
+    for (int j = 0; j < n; ++j){
+        t[j] = 0;
+    }
+    for (int j = 0; ; ++j){
+        if(x[j].index == -1)
+            break;
+        t[x[j].index] = x[j].value;
+    }
+}
+
+int MultiLayerPerceptron::Train(const struct problem *prob,const struct parameter *param){
+    double *input  = new double[pLayers[0].nNumNeurons];
+    double *output = new double[pLayers[nNumLayers-1].nNumNeurons];
+    double *target = new double[pLayers[nNumLayers-1].nNumNeurons];
+
+    if(!input) return -1;
+    if(!output) return -1;
+    if(!target) return -1;
+
+    for (int i = 0; i < prob->l; ++i){
+        target[0] = prob->y[i];
+        ConvertFeatureNode(prob->x[i],input);
+        Simulate(input,output,target,true);
+    }
+    if(input)  delete[] input;
+    if(output) delete[] output;
+    if(target) delete[] target;
+    return 0;
+}
+
 int MultiLayerPerceptron::Train(const char* fname)
 {
   int count = 0;
@@ -422,14 +454,26 @@ int MultiLayerPerceptron::Test(const char* fname)
   return count;
 }
 
-double MultiLayerPerceptron::predict(std::vector<double> features){
-    double out;
-    double *input  = new double[pLayers[0].nNumNeurons];
-    SetInputSignal(features.data());
+double MultiLayerPerceptron::predict(const struct feature_node *x){
+    double* input  = NULL;
+    double* output = NULL;
+    double* target = NULL;
+    input  = new double[pLayers[0].nNumNeurons];
+    output = new double[pLayers[nNumLayers-1].nNumNeurons];
+    target = new double[pLayers[nNumLayers-1].nNumNeurons];
+
+    if(!input) return -1;
+    if(!output) return -1;
+    if(!target) return -1;
+    ConvertFeatureNode(x,input);
+    SetInputSignal(input);
     PropagateSignal();
-    GetOutputSignal(&out);
+    GetOutputSignal(output);
+    double retval = output[0];
     if(input)  delete[] input;
-    return out;
+    if(output) delete[] output;
+    if(target) delete[] target;
+    return retval;
 }
 
 void MultiLayerPerceptron::Run(const char* fname, const int& maxiter)
@@ -479,7 +523,16 @@ void MultiLayerPerceptron::Run(const char* fname, const int& maxiter)
 
   } while ( (!Stop) && (countTrain<maxiter) );
 
+    int TestSet = 50;
+    feature_node fn[2];
+    // double output[TestSet];
+    for(int i = 0; i < TestSet; i++){
+        fn[0].index = 0;
+        fn[0].value = ((double)i)/TestSet * 3.1415*2;
+        fn[1].index = -1;
+        printf("%f %f\n" , fn[0].value, predict(fn));
+    }
+
   printf("bye\n");
 
 }
-

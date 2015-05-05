@@ -51,6 +51,7 @@ class MultiLayerPerceptron {
 
   void Simulate(double* input, double* output, double* target, bool training);
 
+  void ConvertFeatureNode(const struct feature_node *x, double *t);
 
 public:
 
@@ -65,7 +66,7 @@ public:
   int Train(const char* fnames);
   int Train(const struct problem *prob,const struct parameter *param);
   int Test (const char* fname);
-  double predict(std::vector<double> features);
+  double predict(const struct feature_node *x);
 
   void Run(const char* fname, const int& maxiter);
 

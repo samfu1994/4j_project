@@ -3,7 +3,7 @@
 # vpath %.h blas
 VPATH = build : src : liblinear : mlp : blas
 
-# OPTFLAGS = -g -Wall
+OPTFLAGS = -g -Wall
 
 BLAS_HEADERS 	= blas.h blasp.h
 BLAS_FILES 		= dnrm2.o daxpy.o ddot.o dscal.o 
@@ -26,39 +26,34 @@ PROB_FILES		= prob.o
 PROB_CFLAGS		= $(OPTFLAGS)
 PROB_LIBS		= -lpthread
 
-all: prob mlp
+all: prob test
 
 prob: $(PROB_FILES) $(LIBLINEAR_FILES) $(BLAS_FILES) $(THREADS_FILES)
-	g++ $(PROB_CFLAGS) $^ -o build/prob $(PROB_LIBS)
+	cd build && g++ $(PROB_CFLAGS) $(patsubst build/%, % ,$^) -o prob $(PROB_LIBS)
 
 $(PROB_FILES)::%.o:%.cpp $(PROB_HEADERS)
 	cd build && g++ $(THREADS_CFLAGS) -c ../$*.cpp
 
-# threads:   $(THREADS_HEADERS) $(THREADS_FILES)
-
 $(THREADS_FILES):%.o:%.cpp $(THREADS_HEADERS)
 	cd build && g++ $(THREADS_CFLAGS) -c ../src/$*.cpp
 
-mlp: $(MLP_FILES) $(MLP_HEADERS)
-	cd build && g++ $(MLP_FILES) -o mlp
+test: $(MLP_FILES) $(MLP_HEADERS)
+	cd build && g++ $(MLP_FILES) -o test
 
 $(MLP_FILES):%.o:%.cpp $(MLP_HEADERS)
 	cd build && g++ $(MLP_CFLAGS) -c ../mlp/$*.cpp
 
-
-
-liblinear:   $(LIBLINEAR_FILES) $(LIBLINEAR_HEADERS)
-
-$(LIBLINEAR_FILES):%.o:%.cpp $(LIBLINEAR_HEADERS) blas
+$(LIBLINEAR_FILES):%.o:%.cpp $(LIBLINEAR_HEADERS) $(BLAS_FILES)
 	cd build && g++ $(LIBLINEAR_CFLAGS) -c ../liblinear/$*.cpp
-
-
-
-blas: $(BLAS_FILES) $(BLAS_HEADERS)
 
 $(BLAS_FILES):%.o:%.c $(BLAS_HEADERS)
 	cd build && gcc $(BLAS_CFLAGS) -c ../blas/$*.c
 
+runprob:
+	make &&	./build/prob
+
+runtest:
+	make &&	./build/test
 
 clean:
 	rm build/*
