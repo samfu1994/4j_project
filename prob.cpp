@@ -186,14 +186,14 @@ void * trainThreadFunc(void *);
 void * predictThreadFunc(void *);
 predictResult getPredictRes(vector<double> &targetVal, \
         vector<double> &predictTargetVal);
-void getRoc(threads &poll, \
+void getRoc(threads &pool, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
         void*(*func)(void*), \
         vector<double> &bias ,\
         predictResult & retVal );
-vector<double> autuRoc(threads &poll, \
+vector<double> autuRoc(threads &pool, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
@@ -233,7 +233,7 @@ int main(){
     vector<problem>                     gProb;
     vector<model*>                      gmodel;
     // test var
-    threads                             poll(8);
+    threads                             pool(8);
     vector<cost_return_node *>          gNode;
     // read data
     int train_num = readData("data/train.txt",lables,features);
@@ -253,7 +253,6 @@ int main(){
     for(int i = 0; i < test_num; i++){
         length_of_group_test[i] = tFeatures[i].size();
     }
-    printf("start train\n");
     //nn_drive(lables, features);
     // classify trainning data
     classify(lables,features,gFeature,gTargetval);
@@ -261,31 +260,32 @@ int main(){
 
     // train
     gNode.reserve(NUM_GROUP);
-
+    printf("start training\n");
     for(int i = 0; i < NUM_GROUP; i++){
-        poll.addJob(trainnnFunc,\
+        pool.addJob(trainnnFunc,\
             new nnParams(i, &gNode[i], gFeature[i], gTargetval[i]));
     }
-    poll.wait();
+    pool.wait();
     // predict
+    printf("start predicting\n");
     predictTargetVal.reserve(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
-        poll.addJob(predictnnFunc,\
+        pool.addJob(predictnnFunc,\
             new preadictnnParams(i, &gNode,tFeatures[i].data(),&(predictTargetVal[i]) ));
     }
-    poll.wait();
+    pool.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
     /*
-    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
+    vector<double> bias = autuRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
-    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    getRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
     for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
     */
-    poll.stop();
+    pool.stop();
 
     return 0;
 
@@ -307,7 +307,7 @@ int main(){
     vector<problem>                     gProb;
     vector<model*>                      gmodel;
     // test var
-    threads                             poll(8);
+    threads                             pool(8);
     vector<cost_return_node *>          gNode;
     // read data
     readData("data/train.txt",lables,features);
@@ -324,33 +324,33 @@ int main(){
     getGroupParam(gFeature,gTargetval,gParam,gProb);
     gmodel.reserve(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
-        poll.addJob(trainThreadFunc,\
+        pool.addJob(trainThreadFunc,\
             new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
     }
-    poll.wait();
+    pool.wait();
     // predict
     predictTargetVal.reserve(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
-        poll.addJob(predictThreadFunc,\
+        pool.addJob(predictThreadFunc,\
             new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
     }
-    poll.wait();
+    pool.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
 
-    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
+    vector<double> bias = autuRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
-    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    getRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
     for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
-    poll.stop();
+    pool.stop();
     return 0;
 }
 */
 // make sure that there are enough
-vector<double> autuRoc(threads &poll, \
+vector<double> autuRoc(threads &pool, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
@@ -395,13 +395,13 @@ vector<double> autuRoc(threads &poll, \
             break;
         }
         for(unsigned int i = 0; i < sampleFeatures.size(); i++){
-            poll.addJob(func,\
+            pool.addJob(func,\
                     new preadictThreadParams(&gmodel, \
                             sampleFeatures[i], \
                             &(predictTargetVal[i]), \
                             b));
         }
-        poll.wait();
+        pool.wait();
         predictResult pr = getPredictRes(sampleTargetval,predictTargetVal);
         // printf("%f %f %f \n", b, pr.TPR, pr.FPR);
         sampleFPR.insert(sampleFPR.begin()+sapa,pr.FPR);
@@ -419,7 +419,7 @@ vector<double> autuRoc(threads &poll, \
     }
     return bias;
 }
-void getRoc(threads &poll, \
+void getRoc(threads &pool, \
         vector<vector<feature_node> > &tFeatures, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
@@ -432,13 +432,13 @@ void getRoc(threads &poll, \
     predictTargetVal.reserve(tTargetval.size());
     for(int j = 0; j < (int)bias.size(); j++){
         for(unsigned int i = 0; i < tFeatures.size(); i++){
-            poll.addJob(func,\
+            pool.addJob(func,\
                     new preadictThreadParams(&gmodel, \
                             tFeatures[i].data(), \
                             &(predictTargetVal[i]), \
                             bias[j]));
         }
-        poll.wait();
+        pool.wait();
         predictResult pr = getPredictRes(tTargetval,predictTargetVal);
         printf("rounf %d of %d ", j+1, (int)bias.size());
         printf(" %f %f \n", pr.TPR, pr.FPR);
@@ -683,62 +683,61 @@ MatrixXd * getX(int index, vector<feature_node *> &features, int l){
     return X;
 }
 VectorXd * getY_single(double lables){
-	VectorXd * y = 	new VectorXd(1);
-	for(int i = 0 ; i < 1 ;i++){
+    VectorXd * y =  new VectorXd(1);
+    for(int i = 0 ; i < 1 ;i++){
         if(lables == 1){
             (*y)(i) = 1;
         }
         else{
             (*y)(i) = 2;
         }
-	}
-	return y;
+    }
+    return y;
 }
 VectorXd * getY( vector<double> &lables, int l){
-	VectorXd * y = 	new VectorXd(l);
-	for(int i = 0 ; i < l ;i++){
+    VectorXd * y =  new VectorXd(l);
+    for(int i = 0 ; i < l ;i++){
         if(lables[i] == 1){
             (*y)(i) = 1;
         }
         else{
             (*y)(i) = 2;
         }
-	}
-	return y;
+    }
+    return y;
 }
 cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_node *> &features){
+    printf("enter nn_train\n");
     int l = lables.size();
     double alpha = 0.01;
-	MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
-	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
-
-	//VectorXd * initial_param = unroll(Theta1, Theta2);
-	int lamda = 1;
-	MatrixXd * X = getX(index, features, l);
-
-	VectorXd * y = getY(lables, l);
-	int n = 0;
-	while(n < 1000){
+    MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
+    MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+    //VectorXd * initial_param = unroll(Theta1, Theta2);
+    int lamda = 1;
+    MatrixXd * X = getX(index, features, l);
+    VectorXd * y = getY(lables, l);
+    int n = 0;
+    while(n < 1000){
         cost_return_node * crn = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
         *Theta1 += alpha * *(crn -> one);
         *Theta2 += alpha * *(crn -> two);
         n++;
-	}
-	cost_return_node * para= new cost_return_node(0);
-	para -> one = Theta1;
-	para -> two = Theta2;
-	return para;
+    }
+    cost_return_node * para= new cost_return_node(0);
+    para -> one = Theta1;
+    para -> two = Theta2;
+    return para;
 
 }
 /*void nn_predict(vector<double> &lables, vector<feature_node *> &features, cost_return_node * para){
     int l = lables.size();
     MatrixXd * Theta1 = para -> one;
-	MatrixXd * Theta2 = para -> two;
-	int lamda = 1;
-	//MatrixXd * X = getX(,features, l);
-	VectorXd * y = getY(lables, l);
-	double accuracy = predict_single(Theta1,Theta2, X, y, lamda, l);
-	return;
+    MatrixXd * Theta2 = para -> two;
+    int lamda = 1;
+    //MatrixXd * X = getX(,features, l);
+    VectorXd * y = getY(lables, l);
+    double accuracy = predict_single(Theta1,Theta2, X, y, lamda, l);
+    return;
 }*/
 
 MatrixXd * myexp(MatrixXd* m){
@@ -817,20 +816,20 @@ MatrixXd *sigmoidGradient(MatrixXd * mat){
 }
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
     MatrixXd tmp_x = *X;
-	MatrixXd t(l,1);
-	for(int i = 0; i < l; i++)
+    MatrixXd t(l,1);
+    for(int i = 0; i < l; i++)
         t(i,1) = 1;
-	tmp_x << t, tmp_x;
-	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
-	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    tmp_x << t, tmp_x;
+    MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
+    a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
     copy_mat(&tmp_x, a1);
     MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
-	copy_mat(&t1_tran, z2);
-	copy_mat(sigmoid(z2), a2);
-	t2 = new MatrixXd(a2 -> rows(), 1);
-	*a2 << *t2, *a2;
-	* z3 = *a2 * Theta2 -> transpose();
-	a3 = sigmoid(z3);
+    copy_mat(&t1_tran, z2);
+    copy_mat(sigmoid(z2), a2);
+    t2 = new MatrixXd(a2 -> rows(), 1);
+    *a2 << *t2, *a2;
+    * z3 = *a2 * Theta2 -> transpose();
+    a3 = sigmoid(z3);
     if(abs(1 - (*a3)(0,0)) < abs(1 - (*a3)(0, 1)) )
         return 1;
     else
@@ -839,20 +838,20 @@ double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorX
 }
 double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
     MatrixXd tmp_x = *X;
-	MatrixXd t(l,1);
-	for(int i = 0; i < l; i++)
+    MatrixXd t(l,1);
+    for(int i = 0; i < l; i++)
         t(i,1) = 1;
-	tmp_x << t, tmp_x;
-	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
-	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    tmp_x << t, tmp_x;
+    MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
+    a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
     copy_mat(&tmp_x, a1);
     MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
-	copy_mat(&t1_tran, z2);
-	copy_mat(sigmoid(z2), a2);
-	t2 = new MatrixXd(a2 -> rows(), 1);
-	*a2 << *t2, *a2;
-	* z3 = *a2 * Theta2 -> transpose();
-	a3 = sigmoid(z3);
+    copy_mat(&t1_tran, z2);
+    copy_mat(sigmoid(z2), a2);
+    t2 = new MatrixXd(a2 -> rows(), 1);
+    *a2 << *t2, *a2;
+    * z3 = *a2 * Theta2 -> transpose();
+    a3 = sigmoid(z3);
     VectorXd yy(a3 -> rows());
     for(int i = 0; i < a3 -> rows(); i++){
         if(abs(1 - (*a3)(i,0)) < abs(1 - (*a3)(i, 1)) )
@@ -870,21 +869,21 @@ double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd 
     return tmp_count / a3_size;
 }
 cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
-	MatrixXd tmp_x = *X;
-	MatrixXd t(l,1);
-	for(int i = 0; i < l; i++)
+    MatrixXd tmp_x = *X;
+    MatrixXd t(l,1);
+    for(int i = 0; i < l; i++)
         t(i,1) = 1;
-	tmp_x << t, tmp_x;
-	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3, * yy;
-	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    tmp_x << t, tmp_x;
+    MatrixXd *a1, *z2, *a2, *t2, * z3, * a3, * yy;
+    a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
     copy_mat(&tmp_x, a1);
     MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
-	copy_mat(&t1_tran, z2);
-	copy_mat(sigmoid(z2), a2);
-	t2 = new MatrixXd(a2 -> rows(), 1);
-	*a2 << *t2, *a2;
-	* z3 = *a2 * Theta2 -> transpose();
-	a3 = sigmoid(z3);
+    copy_mat(&t1_tran, z2);
+    copy_mat(sigmoid(z2), a2);
+    t2 = new MatrixXd(a2 -> rows(), 1);
+    *a2 << *t2, *a2;
+    * z3 = *a2 * Theta2 -> transpose();
+    a3 = sigmoid(z3);
     yy = new MatrixXd(a3 -> rows(),a3 -> cols());
     for(int i = 0; i < a3 -> rows(); i++)
         for(int j = 0; j < a3 ->cols(); j++)
@@ -893,7 +892,7 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
         (*yy)(i, (*y)(i)) = 1;
     }
     MatrixXd tz2(l,1);
-	for(int i = 0; i < z2 -> rows(); i++)
+    for(int i = 0; i < z2 -> rows(); i++)
         tz2(i,1) = 1;
     MatrixXd tmp_z2;
     tmp_z2 << tz2 , *z2;
@@ -938,23 +937,23 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
 }
 
 VectorXd * unroll(MatrixXd * one, MatrixXd * two){
-	VectorXd * tmp = new VectorXd(one -> rows() * one -> cols() + two -> rows() + two -> cols());
-	for(int i = 0; i < one -> cols(); i++){
-		for(int j = 0; j < one -> rows(); j++){
-			(*tmp)(i * one -> rows() + j) = (*one)(j,i);
-		}
-	}
+    VectorXd * tmp = new VectorXd(one -> rows() * one -> cols() + two -> rows() + two -> cols());
+    for(int i = 0; i < one -> cols(); i++){
+        for(int j = 0; j < one -> rows(); j++){
+            (*tmp)(i * one -> rows() + j) = (*one)(j,i);
+        }
+    }
 }
 MatrixXd * initialize_para(int input_size, int output_size){
-	srand(time(NULL));
-	int epsilon = 0.10;
-	MatrixXd * mat = new MatrixXd(input_size, output_size);
-	for(int i = 0; i < input_size; i++){
-		for(int j = 0; j < output_size; j++){
-			(*mat)(i,j) = rand()%1000 / 1000 * 2 * epsilon - epsilon;
-		}
-	}
-	return mat;
+    srand(time(NULL));
+    int epsilon = 0.10;
+    MatrixXd * mat = new MatrixXd(input_size, output_size);
+    for(int i = 0; i < input_size; i++){
+        for(int j = 0; j < output_size; j++){
+            (*mat)(i,j) = rand()%1000 / 1000 * 2 * epsilon - epsilon;
+        }
+    }
+    return mat;
 }
 // this group the data with the same section together.
 // So there is only one possitive group, and serveral negiive group
