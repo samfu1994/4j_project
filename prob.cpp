@@ -6,8 +6,9 @@
 #include "src/threads.h"
 #include <string.h>
 #include <map>
+#include <cmath>
 #include "eigen/Eigen/Dense"
-#include "eigen/unsupported/Eigen/MatrixFunctions"
+//#include "eigen/unsupported/Eigen/MatrixFunctions"
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::Matrix;
@@ -42,6 +43,13 @@ const int num_labels = 2;
         printf("%-7d %.15lf\n",(f).index, (f).value)
 
 /* data structure defination */
+struct cost_return_node{
+    double cost_value;
+    MatrixXd * one, * two;
+    cost_return_node(int a){
+        cost_value = a;
+    };
+};
 struct lable_node{
     char Section;
     int  Class;
@@ -597,7 +605,11 @@ int classify_2(vector< vector<lable_node> > &lables, \
 }
 MatrixXd * initialize_para(int input_size, int output_size);
 VectorXd * unroll(MatrixXd *, MatrixXd *);
-double nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd * y, int lamda, int l);
+cost_return_node * nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd * y, int lamda, int l);
+double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
+MatrixXd *sigmoidGradient(MatrixXd * mat);
+MatrixXd *sigmoid(MatrixXd * mat);
+
 MatrixXd * getX(vector< vector<feature_node> >&features, int l){
     MatrixXd * X = new MatrixXd(l, input_layer_size);
     for(int i = 0; i < l; i++){
@@ -630,50 +642,208 @@ VectorXd * getY(vector< vector<lable_node> > &lables, int l){
 }
 void nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
     int l = lables.size();
+    double alpha = 0.01;
 	MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
 	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
 	//VectorXd * initial_param = unroll(Theta1, Theta2);
 	int lamda = 1;
 	MatrixXd * X = getX(features, l);
 	VectorXd * y = getY(lables, l);
-	double J = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
+	int n = 0;
+	while(n < 1000){
+        cost_return_node * crn = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
+        *Theta1 += alpha * *(crn -> one);
+        *Theta2 += alpha * *(crn -> two);
+        n++;
+	}
+
 }
-MatrixXd sigmoid(MatrixXd mat){
-    /*int r = mat.rows(), c = mat.cols();
-    for(int i = 0; i < r; i++){
-        for(int j = 0; j < c; j++){
-            mat(i, j) = 1 / (1 + exp(mat(i, j)));
+void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+    int l = lables.size();
+    MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
+	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+	int lamda = 1;
+	MatrixXd * X = getX(features, l);
+	VectorXd * y = getY(lables, l);
+	double accuracy = predict_func(Theta1,Theta2, X, y, lamda, l);
+	return;
+}
+
+MatrixXd * myexp(MatrixXd* m){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m ->rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = exp((*m)(i, j));
         }
-    }*/
-    mat = 1 / (1 + exp(-mat));
-    return mat;
+    }
+    return ret;
+};
+MatrixXd * myadd_and_inverse(MatrixXd * m){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m -> rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = (1 / (*m)(i, j) + 1);
+        }
+    }
+    return ret;
+};
+MatrixXd * myopposite(MatrixXd * m){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m -> rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = -(*m)(i, j);
+        }
+    }
+    return ret;
+};
+MatrixXd * myadd(MatrixXd * m, MatrixXd * n){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m -> rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = (*m)(i, j) + (*n)(i, j);
+        }
+    }
+    delete m;
+    return ret;
 }
-double nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
+MatrixXd * minus_by_one(MatrixXd * m){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m -> rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = 1 - (*m)(i, j);
+        }
+    }
+    return ret;
+}
+void * copy_mat(MatrixXd * source, MatrixXd * dest){
+    for(int i = 0; i < source -> rows(); i++){
+        for(int j = 0; j < source -> cols(); j++){
+            (*dest)(i, j) = 1 - (*source)(i, j);
+        }
+    }
+}
+MatrixXd * mylog(MatrixXd * m){
+    MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
+    for(int i = 0; i < m -> rows(); i++){
+        for(int j = 0; j < m -> cols(); j++){
+            (*ret)(i, j) = log((*m)(i, j));
+        }
+    }
+    return ret;
+}
+MatrixXd * sigmoid(MatrixXd * mat){
+    MatrixXd * ret = new MatrixXd(mat -> rows(), mat -> cols());
+    ret = myexp(mat);
+    ret = myadd_and_inverse(ret);
+    return ret;
+}
+
+MatrixXd *sigmoidGradient(MatrixXd * mat){
+    MatrixXd * ret = new MatrixXd(mat -> rows(), mat -> cols());
+    (*ret) = sigmoid(mat) -> cwiseProduct(*(minus_by_one(ret)));
+    return ret;
+}
+double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
+    MatrixXd tmp_x = *X;
+	MatrixXd t(l,1);
+	for(int i = 0; i < l; i++)
+        t(i,1) = 1;
+	tmp_x << t, tmp_x;
+	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
+	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    copy_mat(&tmp_x, a1);
+    MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
+	copy_mat(&t1_tran, z2);
+	copy_mat(sigmoid(z2), a2);
+	t2 = new MatrixXd(a2 -> rows(), 1);
+	*a2 << *t2, *a2;
+	* z3 = *a2 * Theta2 -> transpose();
+	a3 = sigmoid(z3);
+    VectorXd yy(a3 -> rows());
+    for(int i = 0; i < a3 -> rows(); i++){
+        if(abs(1 - (*a3)(i,0)) < abs(1 - (*a3)(i, 1)) )
+            yy(i) = 1;
+        else
+            yy(i) = 2;
+    }
+    double tmp_count = 0;
+    double a3_size = a3 -> rows();
+    for(int i = 0; i < a3 -> rows(); i++){
+        if(yy(i) == (*y)(i))
+            tmp_count += 1;
+    }
+    printf("acurracy is %f\n", tmp_count / a3_size);
+    return tmp_count / a3_size;
+
+}
+cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
 	MatrixXd tmp_x = *X;
 	MatrixXd t(l,1);
 	for(int i = 0; i < l; i++)
         t(i,1) = 1;
 	tmp_x << t, tmp_x;
-	MatrixXd a1,z2, a2, z3, a3;
-	a1 = tmp_x;
-	z2 = a1 * Theta1 -> transpose();
-	a2 = sigmoid(z2);
-	MatrixXd t2(a2.rows(), 1);
-	a2 << t2, a2;
-	z3 = a2 * Theta2 -> transpose();
+	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3, * yy;
+	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    copy_mat(&tmp_x, a1);
+    MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
+	copy_mat(&t1_tran, z2);
+	copy_mat(sigmoid(z2), a2);
+	t2 = new MatrixXd(a2 -> rows(), 1);
+	*a2 << *t2, *a2;
+	* z3 = *a2 * Theta2 -> transpose();
 	a3 = sigmoid(z3);
-    MatrixXd yy(a3.rows(),a3.cols());
-    for(int i = 0; i < a3.rows(); i++)
-        for(int j = 0; j < a3.cols(); j++)
-            yy(i, j) = 0;
-
-    for(int i = 0; i < a3.rows(); i++){
-        yy(i, y(i)) = 1;
+    yy = new MatrixXd(a3 -> rows(),a3 -> cols());
+    for(int i = 0; i < a3 -> rows(); i++)
+        for(int j = 0; j < a3 ->cols(); j++)
+            (*yy)(i, j) = 0;
+    for(int i = 0; i < a3 -> rows(); i++){
+        (*yy)(i, (*y)(i)) = 1;
     }
-    MatrixXd tmp3 = -(log(a3).cwiseproduct(yy) + (1 - yy).cwiseproduct(log(1 - a3)));
-    int s = tmp3.sum();
-    return s;
+    MatrixXd tz2(l,1);
+	for(int i = 0; i < z2 -> rows(); i++)
+        tz2(i,1) = 1;
+    MatrixXd tmp_z2;
+    tmp_z2 << tz2 , *z2;
+    MatrixXd tt1 = (*mylog(a3)).cwiseProduct(*yy);
+    MatrixXd tt2 = (*minus_by_one(yy)).cwiseProduct(*mylog( minus_by_one(a3) ));
+    MatrixXd  * tmp3 = myopposite(myadd(&tt1, &tt2));
+    int s = tmp3 -> sum();
+    //start back propagation
+    for(int i = 0; i < Theta1 -> rows(); i++)
+        (*Theta1)(i,1) = 0;
+    for(int i = 0; i < Theta2 -> rows(); i++)
+        (*Theta2)(i,1) = 0;
+    int regu1 = ((*Theta1).cwiseProduct(*Theta1)).sum();
+    int regu2 = ((*Theta2).cwiseProduct(*Theta2)).sum();
+    s += (regu1 + regu2) * lamda / 2 / l;
+    MatrixXd delta3 = *a3 - *yy;
+    MatrixXd delta2 = (delta3 * (*Theta2)).cwiseProduct(tmp_z2);
+    MatrixXd f_delta2(delta2.rows(), delta2.cols() - 1);
+    for(int i = 0; i < f_delta2.rows(); i++)
+        for(int j = 0;j < f_delta2.cols(); j++)
+            f_delta2(i,j) = delta2(i, j + 1);
+    MatrixXd triangle2 = delta3.transpose() * (*a2);
+    MatrixXd triangle1 = f_delta2.transpose() * (*X);
+    MatrixXd *Theta1_grad = new MatrixXd(triangle1.rows(), triangle1.cols());
+    *Theta1_grad = triangle1 / l;
+    MatrixXd *Theta2_grad = new MatrixXd(triangle2.rows(), triangle2.cols());
+    *Theta1_grad = triangle2 / l;
+    for(int i = 0; i < Theta1_grad -> rows(); i++){
+        for(int j = 0; j < Theta1_grad -> cols(); j++){
+            (*Theta1_grad)(i, j) += lamda * (*Theta1)(i,j) / l;
+        }
+    }
+    for(int i = 0; i < Theta2_grad -> rows(); i++){
+        for(int j = 0; j < Theta2_grad -> cols(); j++){
+            (*Theta2_grad)(i, j) += lamda * (*Theta2)(i,j) / l;
+        }
+    }
+    cost_return_node * crn = new cost_return_node(s);
+    crn -> one = Theta1_grad;
+    crn -> two = Theta2_grad;
+    return crn;
 }
+
 VectorXd * unroll(MatrixXd * one, MatrixXd * two){
 	VectorXd * tmp = new VectorXd(one -> rows() * one -> cols() + two -> rows() + two -> cols());
 	for(int i = 0; i < one -> cols(); i++){
