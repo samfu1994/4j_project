@@ -73,6 +73,38 @@ struct trainThreadParams{
         retData = _retData;
     }
 };
+struct nnParams{
+    int         groupNum;
+    cost_return_node **  node;
+    vector<feature_node* >  currentFeature;
+    vector<double > currentTargetval;
+    nnParams(int _gn, cost_return_node **  n, vector<feature_node* > &f, vector<double > &t)
+    {
+        groupNum = _gn;
+        node = n;
+        currentFeature = f;
+        currentTargetval = t;
+    }
+};
+
+struct preadictnnParams{
+    int index;
+    vector<cost_return_node*> * node;
+    feature_node* f;
+    double * retVal;
+    double bias;
+    preadictnnParams(int ind,\
+            vector<cost_return_node*> *_node, \
+            feature_node* _f, \
+            double*ret, \
+            double _bias = 0){
+        index = ind;
+        node = _node;
+        f = _f;
+        retVal = ret;
+        bias = _bias;
+    }
+};
 struct preadictThreadParams{
     vector<model*> * mod;
     feature_node* f;
@@ -120,9 +152,9 @@ struct predictResult
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-      int NUM_POSITIVE = 50;
-      int NUM_NEGATIVE = 150;
-      int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
+      const int NUM_POSITIVE = 50;
+      const int NUM_NEGATIVE = 150;
+      const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
@@ -166,7 +198,23 @@ vector<double> autuRoc(threads &poll, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
         void*(*func)(void*) );
-
+void nn_drive(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features);
+MatrixXd * initialize_para(int input_size, int output_size);
+VectorXd * unroll(MatrixXd *, MatrixXd *);
+cost_return_node * nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd * y, int lamda, int l);
+double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
+MatrixXd *sigmoidGradient(MatrixXd * mat);
+MatrixXd *sigmoid(MatrixXd * mat);
+cost_return_node* nn_train(int index,  vector<double>  &lables, vector<feature_node *> &features);
+void nn_predict(vector<double> &lables, vector<feature_node *> &features, cost_return_node * para);
+void * trainThreadFunc(void * p);
+void * trainnnFunc(void * p);
+void * predictnnFunc(void *p);
+cost_return_node *  nn_train(vector<double> &lables, vector<feature_node *> &features);
+int **length_of_group_train, * length_of_group_test;
+MatrixXd * getX_single(int index, feature_node * features);
+VectorXd * getY_single(double lables);
+double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
 /* functions */
 int main(){
     // rew train data
@@ -186,12 +234,88 @@ int main(){
     vector<model*>                      gmodel;
     // test var
     threads                             poll(8);
+    vector<cost_return_node *>          gNode;
+    // read data
+    int train_num = readData("data/train.txt",lables,features);
+    int test_num = readData("data/test.txt",tLables,tFeatures);
 
+    getTargetVal(lables,targetVal);
+    getTargetVal(tLables,tTargetval);
+
+    length_of_group_train = new int * [NUM_GROUP];
+    int group_size = train_num / NUM_POSITIVE + train_num / NUM_NEGATIVE + 2;
+    for(int i = 0; i < NUM_GROUP; i++){
+        length_of_group_train[i] = new int [group_size];
+        for(int j = 0; j < group_size; j++)
+            length_of_group_train[i][j] = 0;
+    }
+    length_of_group_test = new int[test_num];
+    for(int i = 0; i < test_num; i++){
+        length_of_group_test[i] = tFeatures[i].size();
+    }
+    printf("start train\n");
+    //nn_drive(lables, features);
+    // classify trainning data
+    classify(lables,features,gFeature,gTargetval);
+    printf("Finished classify\n");
+
+    // train
+    gNode.reserve(NUM_GROUP);
+
+    for(int i = 0; i < NUM_GROUP; i++){
+        poll.addJob(trainnnFunc,\
+            new nnParams(i, &gNode[i], gFeature[i], gTargetval[i]));
+    }
+    poll.wait();
+    // predict
+    predictTargetVal.reserve(tTargetval.size());
+    for(unsigned int i = 0; i < tFeatures.size(); i++){
+        poll.addJob(predictnnFunc,\
+            new preadictnnParams(i, &gNode,tFeatures[i].data(),&(predictTargetVal[i]) ));
+    }
+    poll.wait();
+    predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+    printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    /*
+    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
+    // get roc
+    printf("GETROC\n");
+    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
+        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
+    }
+    */
+    poll.stop();
+
+    return 0;
+
+}
+/*int main(){
+    // rew train data
+    vector<vector<feature_node> >       features;
+    vector<vector<lable_node> >         lables;
+    vector<double>                      targetVal;
+    // raw test data
+    vector<double>                      tTargetval;
+    vector<vector<feature_node> >       tFeatures;
+    vector<vector<lable_node> >         tLables;
+    vector<double>                      predictTargetVal;
+    // train var
+    vector<vector<double> >             gTargetval;
+    vector< vector<feature_node* > >    gFeature;
+    vector<parameter>                   gParam;
+    vector<problem>                     gProb;
+    vector<model*>                      gmodel;
+    // test var
+    threads                             poll(8);
+    vector<cost_return_node *>          gNode;
     // read data
     readData("data/train.txt",lables,features);
     readData("data/test.txt",tLables,tFeatures);
+
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
+    printf("start train\n");
     // classify trainning data
     classify_2(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
@@ -213,8 +337,8 @@ int main(){
     poll.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
-    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
 
+    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
     getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
@@ -224,6 +348,7 @@ int main(){
     poll.stop();
     return 0;
 }
+*/
 // make sure that there are enough
 vector<double> autuRoc(threads &poll, \
         vector<vector<feature_node> > &tFeatures, \
@@ -366,9 +491,51 @@ void * predictThreadFunc(void *p){
     delete pp;
     return NULL;
 }
+void * predictnnFunc(void *p){
+    preadictnnParams *  pp = (preadictnnParams*)p;
+    feature_node * ff = pp -> f;
+    int current = pp -> index;
+    vector<cost_return_node *>&         node = *(pp->node);
+    vector<double>          mins;
+    mins.reserve(NUM_POSITIVE);
+    int lamda = 1;
+    int l = 1;
+    // MIN
+    double t;
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        MatrixXd * Theta1 = (*(pp -> node))[i] -> one;
+        MatrixXd * Theta2 = (*(pp -> node))[i] -> two;
+        MatrixXd * X = getX_single(current, ff);
+        VectorXd * y = getY_single(*(pp -> retVal));
+        t = predict_single(Theta1, Theta2,  X,y, lamda, l);
+        //t = predict_roc(mod[i],pp->f,pp->bias);
+        for(int j = i+NUM_POSITIVE; j < NUM_GROUP;j+=NUM_POSITIVE){
+            Theta1 = (*(pp -> node))[j] -> one;
+            Theta2 = (*(pp -> node))[j] -> two;
+            t = min(t, predict_single(Theta1, Theta2,  X,y,lamda, l));
+        }
+        mins[i] = t;
+    }
+    // MAX
+    t = mins[0];
+    for(int i = 1;i < NUM_POSITIVE;i++){
+        t = max(t,mins[i]);
+    }
+    *(pp->retVal) = t;
+    delete pp;
+
+    return NULL;
+}
 void * trainThreadFunc(void * p){
     trainThreadParams * pa = (trainThreadParams*)p;
     *(pa->retData) = train(pa->prob,pa->param);
+    delete pa;
+    return NULL;
+}
+void * trainnnFunc(void * p){
+    nnParams * pa = (nnParams*) p;
+    int index = pa -> groupNum;
+    *(pa -> node) = nn_train(index, pa -> currentTargetval, pa -> currentFeature);//////////////////////////////////////
     delete pa;
     return NULL;
 }
@@ -468,6 +635,7 @@ int classify(vector< vector<lable_node> > &lables, \
             for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
                 retFeature[j].push_back(features[i].data());
                 retTargetval[j].push_back(1);
+                length_of_group_train[j][retTargetval[j].size() - 1] = features[i].size();
             }
             counterP++;
             counterP = counterP % NUM_POSITIVE;
@@ -475,6 +643,7 @@ int classify(vector< vector<lable_node> > &lables, \
             for(int j = counterN*NUM_POSITIVE; j < counterN*NUM_POSITIVE+NUM_POSITIVE; j++){
                 retFeature[j].push_back(features[i].data());
                 retTargetval[j].push_back(-1);
+                length_of_group_train[j][retTargetval[j].size() - 1] = features[i].size();
             }
             counterN++;
             counterN = counterN % NUM_NEGATIVE;
@@ -482,143 +651,28 @@ int classify(vector< vector<lable_node> > &lables, \
     }
     return 0;
 }
-
-// this group the data with the same section together.
-// So there is only one possitive group, and serveral negiive group
-int classify_1(vector< vector<lable_node> > &lables, \
-        vector< vector<feature_node> >&features, \
-        vector< vector<feature_node* > > & retFeature , \
-        vector<vector<double> > &retTargetval)
-{
-    retFeature.clear();
-    retTargetval.clear();
-    // tmpval
-    map<char, int>                  secToIndex;
-    vector<vector<feature_node*> >  negGroups;
-    vector<vector<double> >         negVals;
-    vector<feature_node*>           possGroups;
-    vector<double>                  possVals;
-    // get single poss and negtive groups
-    for(int i = 0; i < (int)lables.size(); i++){
-        if(lables[i][0].Section == 'A'){
-            possGroups.push_back(features[i].data());
-            possVals.push_back(1);
-        }else{
-            if(secToIndex.find(lables[i][0].Section) == secToIndex.end()){
-                secToIndex[lables[i][0].Section] = (int)negGroups.size();
-                negGroups.push_back(vector<feature_node*>());
-                negVals.push_back(vector<double> ());
+MatrixXd * getX_single(int index, feature_node * features){
+    MatrixXd * X = new MatrixXd(1, input_layer_size);
+        int n = 0;
+        for(int j = 0; j < input_layer_size; j++){
+            (*X)(1, j) = 0;
+            if(n == length_of_group_test[index])
+                continue;
+            if(features[n].index == j){
+                n++;
+                (*X)(1, j) = features[j].value;
             }
-            negGroups[secToIndex[lables[i][0].Section]].push_back(features[i].data());
-            negVals[secToIndex[lables[i][0].Section]].push_back(-1);
         }
-    }
-    NUM_POSITIVE = 1;
-    NUM_NEGATIVE = (int)negGroups.size();
-    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
-    // retFeature.reserve(NUM_GROUP);
-    // retTargetval.reserve(NUM_GROUP);
-    for(int i = 0; i < NUM_GROUP; i++){
-        retFeature.push_back(possGroups);
-        retTargetval.push_back(possVals);
-    }
-    for(int i = 0; i < NUM_NEGATIVE; i++){
-        for(int j = 0; j < (int)negGroups[i].size(); j++){
-            retFeature[i].push_back(negGroups[i][j]);
-            retTargetval[i].push_back(negVals[i][j]);
-        }
-    }
-    return 0;
+    return X;
 }
+MatrixXd * getX(int index, vector<feature_node *> &features, int l){
 
-
-/*
-this group the data with the same Class together.
-So there is only one possitive group, and serveral negiive group
-the code of class is like this:
-    numOfClass = SectionNUm * 100 + classNum;
-Since classNUm is a two digit number, it is enough to do so
-*/
-int classify_2(vector< vector<lable_node> > &lables, \
-        vector< vector<feature_node> >&features, \
-        vector< vector<feature_node* > > & retFeature , \
-        vector<vector<double> > &retTargetval)
-{
-    retFeature.clear();
-    retTargetval.clear();
-    // tmpval
-    map<int, int>                   secToIndex;
-    vector<vector<feature_node*> >  negGroups;
-    vector<vector<double> >         negVals;
-    vector<vector<feature_node*> >  possGroups;
-    vector<vector<double> >         possVals;
-    printf("classify\n");
-    // get single poss and negtive groups
-    int code;
-    for(int i = 0; i < (int)lables.size(); i++){
-        for(int j = 0; j < (int)lables[i].size(); j++){
-           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
-           if(lables[i][0].Section == 'A'){
-                if(secToIndex.find(code)==secToIndex.end()){
-                    secToIndex[code] = (int)possGroups.size();
-                    possGroups.push_back(vector<feature_node*>());
-                    possVals.push_back(vector<double>());
-                }
-                possGroups[secToIndex[code]].push_back(features[i].data());
-                possVals[secToIndex[code]].push_back(1);
-           }else{
-                if(secToIndex.find(code)==secToIndex.end()){
-                    secToIndex[code] = (int)negGroups.size();
-                    negGroups.push_back(vector<feature_node*>());
-                    negVals.push_back(vector<double>());
-                }
-                negGroups[secToIndex[code]].push_back(features[i].data());
-                negVals[secToIndex[code]].push_back(1);
-           }
-        }
-    }
-    printf("group finished\n");
-    NUM_POSITIVE = (int)possGroups.size();
-    NUM_NEGATIVE = (int)negGroups.size();
-    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
-    for(int i = 0; i < NUM_GROUP; i++){
-        retFeature.push_back(vector<feature_node*>());
-        retTargetval.push_back(vector<double>());
-    }
-    for(int i = 0; i < NUM_POSITIVE; i++){
-        for(int j = 0; j < (int)possGroups[i].size(); j++){
-            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
-                retFeature[k].push_back(possGroups[i][j]);
-                retTargetval[k].push_back(1);
-            }
-        }
-    }
-    for(int i = 0; i < NUM_NEGATIVE; i++){
-        for(int j = 0; j < (int)negGroups[i].size(); j++){
-            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
-                retFeature[k].push_back(negGroups[i][j]);
-                retTargetval[k].push_back(-1);
-            }
-        }
-    }
-    return 0;
-}
-MatrixXd * initialize_para(int input_size, int output_size);
-VectorXd * unroll(MatrixXd *, MatrixXd *);
-cost_return_node * nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd * y, int lamda, int l);
-double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
-MatrixXd *sigmoidGradient(MatrixXd * mat);
-MatrixXd *sigmoid(MatrixXd * mat);
-cost_return_node* nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features);
-void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features, cost_return_node *);
-MatrixXd * getX(vector< vector<feature_node> >&features, int l){
     MatrixXd * X = new MatrixXd(l, input_layer_size);
     for(int i = 0; i < l; i++){
         int n = 0;
-        int length_of_each = features[i].size();
         for(int j = 0; j < input_layer_size; j++){
             (*X)(i, j) = 0;
-            if(n == length_of_each)
+            if(n == length_of_group_train[index][i])
                 continue;
             if(features[i][n].index == j){
                 n++;
@@ -627,12 +681,11 @@ MatrixXd * getX(vector< vector<feature_node> >&features, int l){
         }
     }
     return X;
-
 }
-VectorXd * getY(vector< vector<lable_node> > &lables, int l){
-	VectorXd * y = 	new VectorXd(l);
-	for(int i = 0 ; i < l ;i++){
-        if(lables[i][0].Section == 'A'){
+VectorXd * getY_single(double lables){
+	VectorXd * y = 	new VectorXd(1);
+	for(int i = 0 ; i < 1 ;i++){
+        if(lables == 1){
             (*y)(i) = 1;
         }
         else{
@@ -641,19 +694,28 @@ VectorXd * getY(vector< vector<lable_node> > &lables, int l){
 	}
 	return y;
 }
-void nn_drive(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
-    cost_return_node * para = nn_train(lables, features);
-    nn_predict(lables, features, para);
-    return;
+VectorXd * getY( vector<double> &lables, int l){
+	VectorXd * y = 	new VectorXd(l);
+	for(int i = 0 ; i < l ;i++){
+        if(lables[i] == 1){
+            (*y)(i) = 1;
+        }
+        else{
+            (*y)(i) = 2;
+        }
+	}
+	return y;
 }
-cost_return_node *  nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_node *> &features){
     int l = lables.size();
     double alpha = 0.01;
 	MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
 	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+
 	//VectorXd * initial_param = unroll(Theta1, Theta2);
 	int lamda = 1;
-	MatrixXd * X = getX(features, l);
+	MatrixXd * X = getX(index, features, l);
+
 	VectorXd * y = getY(lables, l);
 	int n = 0;
 	while(n < 1000){
@@ -668,16 +730,16 @@ cost_return_node *  nn_train(vector< vector<lable_node> > &lables, vector< vecto
 	return para;
 
 }
-void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features, cost_return_node * para){
+/*void nn_predict(vector<double> &lables, vector<feature_node *> &features, cost_return_node * para){
     int l = lables.size();
     MatrixXd * Theta1 = para -> one;
 	MatrixXd * Theta2 = para -> two;
 	int lamda = 1;
-	MatrixXd * X = getX(features, l);
+	//MatrixXd * X = getX(,features, l);
 	VectorXd * y = getY(lables, l);
-	double accuracy = predict_func(Theta1,Theta2, X, y, lamda, l);
+	double accuracy = predict_single(Theta1,Theta2, X, y, lamda, l);
 	return;
-}
+}*/
 
 MatrixXd * myexp(MatrixXd* m){
     MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
@@ -753,6 +815,28 @@ MatrixXd *sigmoidGradient(MatrixXd * mat){
     (*ret) = sigmoid(mat) -> cwiseProduct(*(minus_by_one(ret)));
     return ret;
 }
+double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
+    MatrixXd tmp_x = *X;
+	MatrixXd t(l,1);
+	for(int i = 0; i < l; i++)
+        t(i,1) = 1;
+	tmp_x << t, tmp_x;
+	MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
+	a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
+    copy_mat(&tmp_x, a1);
+    MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
+	copy_mat(&t1_tran, z2);
+	copy_mat(sigmoid(z2), a2);
+	t2 = new MatrixXd(a2 -> rows(), 1);
+	*a2 << *t2, *a2;
+	* z3 = *a2 * Theta2 -> transpose();
+	a3 = sigmoid(z3);
+    if(abs(1 - (*a3)(0,0)) < abs(1 - (*a3)(0, 1)) )
+        return 1;
+    else
+        return 2;
+
+}
 double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
     MatrixXd tmp_x = *X;
 	MatrixXd t(l,1);
@@ -784,7 +868,6 @@ double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd 
     }
     printf("acurracy is %f\n", tmp_count / a3_size);
     return tmp_count / a3_size;
-
 }
 cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
 	MatrixXd tmp_x = *X;
@@ -873,4 +956,125 @@ MatrixXd * initialize_para(int input_size, int output_size){
 	}
 	return mat;
 }
+// this group the data with the same section together.
+// So there is only one possitive group, and serveral negiive group
+/*
+int classify_1(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<char, int>                  secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<feature_node*>           possGroups;
+    vector<double>                  possVals;
+    // get single poss and negtive groups
+    for(int i = 0; i < (int)lables.size(); i++){
+        if(lables[i][0].Section == 'A'){
+            possGroups.push_back(features[i].data());
+            possVals.push_back(1);
+        }else{
+            if(secToIndex.find(lables[i][0].Section) == secToIndex.end()){
+                secToIndex[lables[i][0].Section] = (int)negGroups.size();
+                negGroups.push_back(vector<feature_node*>());
+                negVals.push_back(vector<double> ());
+            }
+            negGroups[secToIndex[lables[i][0].Section]].push_back(features[i].data());
+            negVals[secToIndex[lables[i][0].Section]].push_back(-1);
+        }
+    }
+    NUM_POSITIVE = 1;
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    // retFeature.reserve(NUM_GROUP);
+    // retTargetval.reserve(NUM_GROUP);
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(possGroups);
+        retTargetval.push_back(possVals);
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            retFeature[i].push_back(negGroups[i][j]);
+            retTargetval[i].push_back(negVals[i][j]);
+        }
+    }
+    return 0;
+}
+*/
 
+/*
+this group the data with the same Class together.
+So there is only one possitive group, and serveral negiive group
+the code of class is like this:
+    numOfClass = SectionNUm * 100 + classNum;
+Since classNUm is a two digit number, it is enough to do so
+*/
+/*
+int classify_2(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<int, int>                   secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<vector<feature_node*> >  possGroups;
+    vector<vector<double> >         possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    int code;
+    for(int i = 0; i < (int)lables.size(); i++){
+        for(int j = 0; j < (int)lables[i].size(); j++){
+           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
+           if(lables[i][0].Section == 'A'){
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)possGroups.size();
+                    possGroups.push_back(vector<feature_node*>());
+                    possVals.push_back(vector<double>());
+                }
+                possGroups[secToIndex[code]].push_back(features[i].data());
+                possVals[secToIndex[code]].push_back(1);
+           }else{
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)negGroups.size();
+                    negGroups.push_back(vector<feature_node*>());
+                    negVals.push_back(vector<double>());
+                }
+                negGroups[secToIndex[code]].push_back(features[i].data());
+                negVals[secToIndex[code]].push_back(1);
+           }
+        }
+    }
+    printf("group finished\n");
+    NUM_POSITIVE = (int)possGroups.size();
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(vector<feature_node*>());
+        retTargetval.push_back(vector<double>());
+    }
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        for(int j = 0; j < (int)possGroups[i].size(); j++){
+            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
+                retFeature[k].push_back(possGroups[i][j]);
+                retTargetval[k].push_back(1);
+            }
+        }
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
+                retFeature[k].push_back(negGroups[i][j]);
+                retTargetval[k].push_back(-1);
+            }
+        }
+    }
+    return 0;
+}*/
