@@ -6,6 +6,7 @@
 #include "src/threads.h"
 #include <string.h>
 #include <map>
+#include <algorithm>
 
 using namespace std;
 /* micro defination */
@@ -131,6 +132,10 @@ int classify_2(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
         vector<vector<double> > &retTargetval);
+int classify_3(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval);
 int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<vector<double> > &gTargetval , \
         vector<parameter> &retParam, \
@@ -178,9 +183,8 @@ int main(){
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
     // classify trainning data
-    classify_2(lables,features,gFeature,gTargetval);
+    classify_3(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
-
     // train
     getGroupParam(gFeature,gTargetval,gParam,gProb);
     gmodel.reserve(NUM_GROUP);
@@ -189,6 +193,7 @@ int main(){
             new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
     }
     poll.wait();
+    printf("predict\n");
     // predict
     predictTargetVal.reserve(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
@@ -198,14 +203,15 @@ int main(){
     poll.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
-    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
-
+    printf("%f\n", (pr.TP+pr.TN)/(pr.TP+pr.TN+pr.FP+pr.FN));
+/*    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
     getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
     for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
+ */   
     poll.stop();
     return 0;
 }
@@ -516,7 +522,38 @@ int classify_1(vector< vector<lable_node> > &lables, \
     return 0;
 }
 
+void cardProduct(vector<vector<feature_node*> >  &negGroups,\
+        vector<vector<double> >         &negVals,\
+        vector<vector<feature_node*> >  &possGroups,\
+        vector<vector<double> >         &possVals,\
+        vector< vector<feature_node* > > & retFeature,\
+        vector<vector<double> > &retTargetval        )
+{
+    NUM_POSITIVE = (int)possGroups.size();
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(vector<feature_node*>());
+        retTargetval.push_back(vector<double>());
+    }
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        for(int j = 0; j < (int)possGroups[i].size(); j++){
+            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
+                retFeature[k].push_back(possGroups[i][j]);
+                retTargetval[k].push_back(1);
+            }
+        }
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
+                retFeature[k].push_back(negGroups[i][j]);
+                retTargetval[k].push_back(-1);
+            }
+        }
+    }
 
+}
 /*
 this group the data with the same Class together.
 So there is only one possitive group, and serveral negiive group
@@ -562,30 +599,94 @@ int classify_2(vector< vector<lable_node> > &lables, \
            }
         }
     }
+    cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
     printf("group finished\n");
-    NUM_POSITIVE = (int)possGroups.size();
-    NUM_NEGATIVE = (int)negGroups.size();
-    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
-    for(int i = 0; i < NUM_GROUP; i++){
-        retFeature.push_back(vector<feature_node*>());
-        retTargetval.push_back(vector<double>());
-    }
-    for(int i = 0; i < NUM_POSITIVE; i++){
-        for(int j = 0; j < (int)possGroups[i].size(); j++){
-            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
-                retFeature[k].push_back(possGroups[i][j]);
-                retTargetval[k].push_back(1);
-            }
+    return 0;
+}
+
+bool compareVectorSize(vector<feature_node*>i, vector<feature_node*> j ){
+    return i.size() < j.size();
+}
+// a <-- a U b;
+// b = empty;
+template <class T>
+void mergeVector(vector<T> &a, vector<T> &b){
+    a.insert(a.end(), b.begin(),b.end());
+    b.clear();
+}
+// arrange group that each group is 0.75size ~~ 1.5 size
+void makeGroup(vector<vector<feature_node*> > &t,int size){
+    for(int i = 1; i < (int)t.size(); i++){
+        if(t[i-1].size() + t[i].size() < size * 1.5){
+            mergeVector(t[i],t[i-1]);
         }
     }
-    for(int i = 0; i < NUM_NEGATIVE; i++){
-        for(int j = 0; j < (int)negGroups[i].size(); j++){
-            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
-                retFeature[k].push_back(negGroups[i][j]);
-                retTargetval[k].push_back(-1);
-            }
+    for(int i = 0; i < (int)t.size(); ){
+        if(t[i].size() > size*1.5){
+            t.push_back(vector<feature_node*>());
+            t.back().insert(t.back().end(),t[i].end()-t[i].size()/2,t[i].end());
+            t[i].erase(t[i].end()-t[i].size()/2,t[i].end());
+        }else{
+            i++;
         }
     }
+    for(vector<vector<feature_node*> >::iterator i = t.begin();i != t.end();){
+        if(i->size()){
+            i++;
+        }else{
+            i = t.erase(i);
+        }
+    }
+}
+/*
+    classify using class information, balanced way
+*/
+int classify_3(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<int, int>                   secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<vector<feature_node*> >  possGroups;
+    vector<vector<double> >         possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    int code;
+    for(int i = 0; i < (int)lables.size(); i++){
+        for(int j = 0; j < (int)lables[i].size(); j++){
+           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
+           if(lables[i][0].Section == 'A'){
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)possGroups.size();
+                    possGroups.push_back(vector<feature_node*>());
+                    // possVals.push_back(vector<double>());
+                }
+                possGroups[secToIndex[code]].push_back(features[i].data());
+                // possVals[secToIndex[code]].push_back(1);
+           }else{
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)negGroups.size();
+                    negGroups.push_back(vector<feature_node*>());
+                    // negVals.push_back(vector<double>());
+                }
+                negGroups[secToIndex[code]].push_back(features[i].data());
+                // negVals[secToIndex[code]].push_back(1);
+           }
+        }
+    }
+    sort(possGroups.begin(),possGroups.end(),compareVectorSize);
+    sort(negGroups.begin(),negGroups.end(),compareVectorSize);
+    // int meansize = (int)possGroups[possGroups.size()/2].size();
+    int meansize = 8000;
+    makeGroup(negGroups,meansize);
+    makeGroup(possGroups,meansize);
+    cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
+    // printf("group finished\n");
     return 0;
 }
 
