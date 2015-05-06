@@ -609,7 +609,8 @@ cost_return_node * nnCostFunction(MatrixXd*, MatrixXd *, MatrixXd * X,VectorXd *
 double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
 MatrixXd *sigmoidGradient(MatrixXd * mat);
 MatrixXd *sigmoid(MatrixXd * mat);
-
+cost_return_node* nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features);
+void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features, cost_return_node *);
 MatrixXd * getX(vector< vector<feature_node> >&features, int l){
     MatrixXd * X = new MatrixXd(l, input_layer_size);
     for(int i = 0; i < l; i++){
@@ -640,7 +641,12 @@ VectorXd * getY(vector< vector<lable_node> > &lables, int l){
 	}
 	return y;
 }
-void nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+void nn_drive(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+    cost_return_node * para = nn_train(lables, features);
+    nn_predict(lables, features, para);
+    return;
+}
+cost_return_node *  nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
     int l = lables.size();
     double alpha = 0.01;
 	MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
@@ -656,12 +662,16 @@ void nn_train(vector< vector<lable_node> > &lables, vector< vector<feature_node>
         *Theta2 += alpha * *(crn -> two);
         n++;
 	}
+	cost_return_node * para= new cost_return_node(0);
+	para -> one = Theta1;
+	para -> two = Theta2;
+	return para;
 
 }
-void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features){
+void nn_predict(vector< vector<lable_node> > &lables, vector< vector<feature_node> >&features, cost_return_node * para){
     int l = lables.size();
-    MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
-	MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+    MatrixXd * Theta1 = para -> one;
+	MatrixXd * Theta2 = para -> two;
 	int lamda = 1;
 	MatrixXd * X = getX(features, l);
 	VectorXd * y = getY(lables, l);
