@@ -14,11 +14,12 @@ using Eigen::MatrixXd;
 using Eigen::Matrix;
 using Eigen::VectorXd;
 const int input_layer_size = 5000;
-const int hidden_layer_size = 200;
-const int iteration_time = 10;
+const int hidden_layer_size = 20;
+const int iteration_time = 1;
 const int num_labels = 2;
 double thres_C = 0;
-double thres_stop = 0.2;
+double thres_stop = 0.5;
+double ini = 0.00001;
 const double lms_learning_rate = 0.00001;
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
@@ -187,8 +188,8 @@ struct predictResult
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-      const int NUM_POSITIVE = 10;
-      const int NUM_NEGATIVE = 30;
+      const int NUM_POSITIVE = 3;
+      const int NUM_NEGATIVE = 9;
       const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
@@ -255,6 +256,7 @@ double lms_predict(int, double * weight, const int num_para , feature_node * fea
 void * lms_in(void * p);
 void * lms_predict_in(void * p);
 /* functions */
+//lms
 int main(){
     // rew train data
     srand(time(NULL));
@@ -328,6 +330,8 @@ int main(){
     return 0;
 
 }
+
+//neural network
 /*
 int main(){
     // rew train data
@@ -396,6 +400,7 @@ int main(){
 
 }
 */
+//svm
 /*int main(){
     // rew train data
     srand(time(NULL));
@@ -513,9 +518,9 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
     double epsilon = 0.1;
     for(int i = 0; i < num_para; i++){
         weight[i] = rand()/10;
-        while(weight[i] >= 0.00001)
+        while(weight[i] >= ini)
             weight[i] /= 10;
-        weight[i] -= 0.000005;
+        weight[i] -= ini/2;
         //printf("weight is %f, i is %d\n", weight[i], i);
     }
     int num_sample = features.size();
@@ -920,9 +925,10 @@ cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_n
     while(n < iteration_time){
         printf("n is %d\n", n);
         cost_return_node * crn = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
-        //printf("theta1: %d * %d, one : %d * %d\n", Theta1 -> rows(), Theta1 -> cols(), crn -> one -> rows(), crn -> one ->cols());
+        printf("theta1: %d * %d, one : %d * %d\n", Theta1 -> rows(), Theta1 -> cols(), crn -> one -> rows(), crn -> one ->cols());
         *Theta1 += alpha * *(crn -> one);
         *Theta2 += alpha * *(crn -> two);
+        delete crn;
         n++;
     }
     printf("quit loop\n");
@@ -1083,8 +1089,13 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
         t(i,0) = 1.0;
     }
     MatrixXd *a1, *z2, *old_a2, *a2, *t2, * z3, * a3, * yy, * tmp3, * tmp_a3, *tmp_tmp_a3, *tmp_yy, * tmp_add;
+        printf("22222222222222\n");
     a1 = new MatrixXd(X -> rows(), X -> cols() + 1);
+        printf("000000000000000\n");
+
     (*a1) << t, (*X);
+        printf("11111111111111111111\n");
+
     z2 = new MatrixXd(a1 -> rows(), Theta1 -> rows());
     *z2 = (*a1) * (Theta1 -> transpose());
     old_a2 = sigmoid(z2);
@@ -1105,6 +1116,7 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
     for(int i = 0; i < a3 -> rows(); i++){
         (*yy)(i, (*y)(i)) = 1;
     }
+
     MatrixXd tz2(l,1);
     for(int i = 0; i < z2 -> rows(); i++)
         tz2(i,0) = 1;
