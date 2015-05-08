@@ -241,7 +241,6 @@ int main(){
 
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
-
     length_of_group_train = new int * [NUM_GROUP];
     int group_size = train_num / NUM_POSITIVE + train_num / NUM_NEGATIVE + 2;
     for(int i = 0; i < NUM_GROUP; i++){
@@ -685,10 +684,10 @@ VectorXd * getY_single(double lables){
     VectorXd * y =  new VectorXd(1);
     for(int i = 0 ; i < 1 ;i++){
         if(lables == 1){
-            (*y)(i) = 1;
+            (*y)(i) = 0;
         }
         else{
-            (*y)(i) = 2;
+            (*y)(i) = 1;
         }
     }
     return y;
@@ -697,10 +696,10 @@ VectorXd * getY( vector<double> &lables, int l){
     VectorXd * y =  new VectorXd(l);
     for(int i = 0 ; i < l ;i++){
         if(lables[i] == 1){
-            (*y)(i) = 1;
+            (*y)(i) = 0;
         }
         else{
-            (*y)(i) = 2;
+            (*y)(i) = 1;
         }
     }
     return y;
@@ -709,8 +708,8 @@ cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_n
     printf("enter nn_train\n");
     int l = lables.size();
     double alpha = 0.01;
-    MatrixXd * Theta1 = initialize_para(input_layer_size, hidden_layer_size);
-    MatrixXd * Theta2 = initialize_para(hidden_layer_size, num_labels);
+    MatrixXd * Theta1 = initialize_para(hidden_layer_size,input_layer_size +1);
+    MatrixXd * Theta2 = initialize_para(num_labels, hidden_layer_size + 1);
     //VectorXd * initial_param = unroll(Theta1, Theta2);
     int lamda = 1;
     MatrixXd * X = getX(index, features, l);
@@ -718,8 +717,12 @@ cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_n
     int n = 0;
     printf("enter loop\n");
     while(n < 1000){
+        printf("n is %d\n", n);
         cost_return_node * crn = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
+        printf("theta1: %d * %d, one : %d * %d\n", Theta1 -> rows(), Theta1 -> cols(), crn -> one -> rows(), crn -> one ->cols());
         *Theta1 += alpha * *(crn -> one);
+                printf("bbbbbb\n");
+
         *Theta2 += alpha * *(crn -> two);
         n++;
     }
@@ -776,7 +779,6 @@ MatrixXd * myadd(MatrixXd * m, MatrixXd * n){
             (*ret)(i, j) = (*m)(i, j) + (*n)(i, j);
         }
     }
-    delete m;
     return ret;
 }
 MatrixXd * minus_by_one(MatrixXd * m){
@@ -789,8 +791,8 @@ MatrixXd * minus_by_one(MatrixXd * m){
     return ret;
 }
 void copy_mat(MatrixXd * source, MatrixXd * dest){
-        printf("enter copy_mat \n");
-    printf("source is %d * %d, dest is %d * %d\n", source -> rows(), source -> cols(), dest -> rows(), dest -> cols());
+        //printf("enter copy_mat \n");
+    //printf("source is %d * %d, dest is %d * %d\n", source -> rows(), source -> cols(), dest -> rows(), dest -> cols());
     //printf("source is %d * %s", source -> rows(), source -> cols());
     //printf("dest is %d * %d\n", dest -> rows(), dest -> cols());
     for(int i = 0; i < source -> rows(); i++){
@@ -799,7 +801,7 @@ void copy_mat(MatrixXd * source, MatrixXd * dest){
             (*dest)(i, j) = 1.0 - (*source)(i, j);
         }
     }
-    printf("quit copy_mat \n");
+    //printf("quit copy_mat \n");
     return;
 }
 MatrixXd * mylog(MatrixXd * m){
@@ -878,55 +880,53 @@ double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd 
     return tmp_count / a3_size;
 }
 cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
-    printf("enter cost function\n");
-    MatrixXd tmp_x(X -> rows(), X -> cols());
-    printf("tmp is %d * %d\n", (&tmp_x) -> rows(), (&tmp_x) -> cols());
-    printf("X is %d * %d\n", X -> rows(), X -> cols());
-
-    printf("eeeeeeeee\n");
-    copy_mat(X, &tmp_x);
-    printf("ddddddddddddddddddddddddddd\n");
+    MatrixXd old_tmp_x(X -> rows(), X -> cols());
+    copy_mat(X, &old_tmp_x);
     MatrixXd t(l,1);
-    for(int i = 0; i < l; i++)
-        t(i,1) = 1;
-    tmp_x << t, tmp_x;
-
-    MatrixXd *a1, *z2, *a2, *t2, * z3, * a3, * yy;
+    for(int i = 0; i < l; i++){
+        t(i,0) = 1.0;
+    }
+    MatrixXd tmp_x(old_tmp_x.rows(), 1 + old_tmp_x.cols());
+    tmp_x << t, old_tmp_x;
+    MatrixXd *a1, *z2, *old_a2, *a2, *t2, * z3, * a3, * yy, * tmp3;
     a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
     copy_mat(&tmp_x, a1);
     MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
     z2 = new MatrixXd(t1_tran.rows(), t1_tran.cols());
     copy_mat(&t1_tran, z2);
-    a2 = new MatrixXd(z2 -> rows(), z2 -> cols());
-    copy_mat(sigmoid(z2), a2);
-    t2 = new MatrixXd(a2 -> rows(), 1);
-    *a2 << *t2, *a2;
+    old_a2 = new MatrixXd(z2 -> rows(), z2 -> cols());
+    copy_mat(sigmoid(z2), old_a2);
+    t2 = new MatrixXd(old_a2 -> rows(), 1);
+    a2 = new MatrixXd(old_a2 -> rows(), 1 + old_a2 -> cols());
+    *a2 << *t2, *old_a2;
     z3 = new MatrixXd(a2 -> rows(), Theta2 -> rows());
     * z3 = *a2 * (Theta2 -> transpose());
     a3 = new MatrixXd(z3 -> rows(), z3 -> cols());
     a3 = sigmoid(z3);
     yy = new MatrixXd(a3 -> rows(),a3 -> cols());
-
     for(int i = 0; i < a3 -> rows(); i++)
         for(int j = 0; j < a3 ->cols(); j++)
             (*yy)(i, j) = 0;
+
     for(int i = 0; i < a3 -> rows(); i++){
         (*yy)(i, (*y)(i)) = 1;
     }
     MatrixXd tz2(l,1);
     for(int i = 0; i < z2 -> rows(); i++)
-        tz2(i,1) = 1;
-    MatrixXd tmp_z2;
+        tz2(i,0) = 1;
+    MatrixXd tmp_z2(z2 -> rows(), 1 + z2 -> cols());
     tmp_z2 << tz2 , *z2;
     MatrixXd tt1 = (*mylog(a3)).cwiseProduct(*yy);
     MatrixXd tt2 = (*minus_by_one(yy)).cwiseProduct(*mylog( minus_by_one(a3) ));
-    MatrixXd  * tmp3 = myopposite(myadd(&tt1, &tt2));
+    tmp3 = myopposite(myadd(&tt1, &tt2));
     int s = tmp3 -> sum();
+    printf("feedfoward finish\n");
+
     //start back propagation
     for(int i = 0; i < Theta1 -> rows(); i++)
-        (*Theta1)(i,1) = 0;
+        (*Theta1)(i,0) = 0;
     for(int i = 0; i < Theta2 -> rows(); i++)
-        (*Theta2)(i,1) = 0;
+        (*Theta2)(i,0) = 0;
     int regu1 = ((*Theta1).cwiseProduct(*Theta1)).sum();
     int regu2 = ((*Theta2).cwiseProduct(*Theta2)).sum();
     s += (regu1 + regu2) * lamda / 2 / l;
@@ -938,11 +938,14 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
         for(int j = 0;j < f_delta2.cols(); j++)
             f_delta2(i,j) = delta2(i, j + 1);
     MatrixXd triangle2 = delta3.transpose() * (*a2);
-    MatrixXd triangle1 = f_delta2.transpose() * (*X);
+    MatrixXd triangle1 = f_delta2.transpose() * tmp_x;
+
     MatrixXd *Theta1_grad = new MatrixXd(triangle1.rows(), triangle1.cols());
     *Theta1_grad = triangle1 / l;
     MatrixXd *Theta2_grad = new MatrixXd(triangle2.rows(), triangle2.cols());
-    *Theta1_grad = triangle2 / l;
+    *Theta2_grad = triangle2 / l;
+    //printf("triangle1: %d * %d, triangle2 : %d * %d\n", triangle1.rows(), triangle1.cols(), triangle2.rows(), triangle2.cols());
+
     for(int i = 0; i < Theta1_grad -> rows(); i++){
         for(int j = 0; j < Theta1_grad -> cols(); j++){
             (*Theta1_grad)(i, j) += lamda * (*Theta1)(i,j) / l;
@@ -953,10 +956,13 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
             (*Theta2_grad)(i, j) += lamda * (*Theta2)(i,j) / l;
         }
     }
+        //printf("t1_grad: %d * %d, t2_grad : %d * %d\n", Theta1_grad -> rows(), Theta1_grad -> cols(),  Theta2_grad ->rows(),  Theta2_grad -> cols());
+
     cost_return_node * crn = new cost_return_node(s);
     crn -> one = Theta1_grad;
     crn -> two = Theta2_grad;
-    printf("quit cost function\n");
+    delete a1, z2, old_a2, a2, t2, z3, a3, yy;
+
     return crn;
 }
 
