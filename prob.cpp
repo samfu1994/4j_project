@@ -508,7 +508,6 @@ void * predictnnFunc(void *p){
         MatrixXd * X = getX_single(current, ff);
         VectorXd * y = getY_single(*(pp -> retVal));
         t = predict_single(Theta1, Theta2,  X,y, lamda, l);
-        //t = predict_roc(mod[i],pp->f,pp->bias);
         for(int j = i+NUM_POSITIVE; j < NUM_GROUP;j+=NUM_POSITIVE){
             Theta1 = (*(pp -> node))[j] -> one;
             Theta2 = (*(pp -> node))[j] -> two;
@@ -685,10 +684,10 @@ VectorXd * getY_single(double lables){
     VectorXd * y =  new VectorXd(1);
     for(int i = 0 ; i < 1 ;i++){
         if(lables == 1){
-            (*y)(i) = 0;
+            (*y)(i) = 1;
         }
         else{
-            (*y)(i) = 1;
+            (*y)(i) = 0;
         }
     }
     return y;
@@ -697,10 +696,10 @@ VectorXd * getY( vector<double> &lables, int l){
     VectorXd * y =  new VectorXd(l);
     for(int i = 0 ; i < l ;i++){
         if(lables[i] == 1){
-            (*y)(i) = 0;
+            (*y)(i) = 1;
         }
         else{
-            (*y)(i) = 1;
+            (*y)(i) = 0;
         }
     }
     return y;
@@ -825,25 +824,30 @@ MatrixXd *sigmoidGradient(MatrixXd * mat){
     return ret;
 }
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
-    MatrixXd tmp_x = *X;
-    MatrixXd t(l,1);
-    for(int i = 0; i < l; i++)
-        t(i,1) = 1;
-    tmp_x << t, tmp_x;
-    MatrixXd *a1, *z2, *a2, *t2, * z3, * a3;
-    a1 = new MatrixXd(tmp_x.rows(), tmp_x.cols());
-    copy_mat(&tmp_x, a1);
-    MatrixXd t1_tran = (*a1) * (Theta1 -> transpose());
-    copy_mat(&t1_tran, z2);
-    copy_mat(sigmoid(z2), a2);
-    t2 = new MatrixXd(a2 -> rows(), 1);
-    *a2 << *t2, *a2;
-    * z3 = *a2 * Theta2 -> transpose();
+     MatrixXd t(l,1);
+    for(int i = 0; i < l; i++){
+        t(i,0) = 1.0;
+    }
+    MatrixXd *a1, *z2, *old_a2, *a2, *t2, * z3, * a3, * yy, * tmp3, * tmp_a3, *tmp_tmp_a3, *tmp_yy, * tmp_add;
+    a1 = new MatrixXd(X -> rows(), X -> cols() + 1);
+    (*a1) << t, (*X);
+    z2 = new MatrixXd(a1 -> rows(), Theta1 -> rows());
+    *z2 = (*a1) * (Theta1 -> transpose());
+    old_a2 = sigmoid(z2);
+    t2 = new MatrixXd(old_a2 -> rows(), 1);
+    for(int i = 0; i < l; i++){
+        (*t2)(i,0) = 1.0;
+    }
+    a2 = new MatrixXd(old_a2 -> rows(), 1 + old_a2 -> cols());
+    *a2 << *t2, *old_a2;
+    z3 = new MatrixXd(a2 -> rows(), Theta2 -> rows());
+    * z3 = *a2 * (Theta2 -> transpose());
+    a3 = new MatrixXd(z3 -> rows(), z3 -> cols());
     a3 = sigmoid(z3);
     if(abs(1 - (*a3)(0,0)) < abs(1 - (*a3)(0, 1)) )
-        return 1;
+        return 0;
     else
-        return 2;
+        return 1;
 
 }
 double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
