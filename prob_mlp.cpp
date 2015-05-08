@@ -8,6 +8,8 @@
 #include <map>
 #include <algorithm>
 
+#include "mlp/mlp.h"
+
 using namespace std;
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
@@ -195,7 +197,10 @@ int main(){
     poll.wait();
     printf("predict\n");
     // predict
-    predictTargetVal.reserve(tTargetval.size());
+
+    mlp m(5000,100,1);
+
+/*    predictTargetVal.reserve(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
         poll.addJob(predictThreadFunc,\
             new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
@@ -204,7 +209,7 @@ int main(){
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
     printf("%f\n", (pr.TP+pr.TN)/(pr.TP+pr.TN+pr.FP+pr.FN));
-/*    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
+    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
     getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);

@@ -13,11 +13,11 @@ LIBLINEAR_HEADERS 	= linear.h  tron.h
 LIBLINEAR_FILES 	= linear.o  tron.o
 LIBLINEAR_CFLAGS 	= $(OPTFLAGS)
 
-MLP_HEADERS = Heaviside.h  HyperbolicTangent.h  InputLayer.h  Layer.h  MultiLayerPerceptron.h  Neuron.h  OutputLayer.h  Sigmoid.h  TransferFunction.h
-MLP_FILES   = InputLayer.o  Layer.o MultiLayerPerceptron.o  OutputLayer.o
+MLP_HEADERS = mlp.h
+MLP_FILES   = mlp.o
 MLP_CFLAGS  = $(OPTFLAGS)
 
-MLP_TEST_HEADERS = Heaviside.h  HyperbolicTangent.h  InputLayer.h  Layer.h  MultiLayerPerceptron.h  Neuron.h  OutputLayer.h  Sigmoid.h  TransferFunction.h
+MLP_TEST_HEADERS = mlp.h
 MLP_TEST_FILES   = main.o
 MLP_TEST_CFLAGS  = $(OPTFLAGS)
 
