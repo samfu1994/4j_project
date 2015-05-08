@@ -18,9 +18,10 @@ const int hidden_layer_size = 20;
 const int iteration_time = 1;
 const int num_labels = 2;
 double thres_C = 0;
-double thres_stop = 0.5;
-double ini = 0.00001;
-const double lms_learning_rate = 0.00001;
+double thres_stop = 100;
+double * thres_stop_array;
+double ini = 0.001;
+const double lms_learning_rate = 0.0001;
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
         (fscanf(fin, \
@@ -188,9 +189,9 @@ struct predictResult
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-      const int NUM_POSITIVE = 3;
-      const int NUM_NEGATIVE = 9;
-      const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
+int NUM_POSITIVE = 3;
+int NUM_NEGATIVE = 9;
+int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
@@ -275,7 +276,7 @@ int main(){
     vector<problem>                     gProb;
     vector<model*>                      gmodel;
     // test var
-    threads                             pool(8);
+    threads                             pool(1);
     vector<cost_return_node *>          gNode;
     // read data
     int train_num = readData("data/train.txt",lables,features);
@@ -283,7 +284,7 @@ int main(){
     vector<double *> weight;
     weight.resize(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++)
-        weight[i] = new double[input_layer_size];
+        weight[i] = new double[NUM_FEATURE];
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
 
@@ -299,7 +300,7 @@ int main(){
         length_of_group_test[i] = tFeatures[i].size();
     }
     // classify trainning data
-    classify(lables,features,gFeature,gTargetval);
+    classify_2(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
     // train
     printf("start training\n");
@@ -332,7 +333,7 @@ int main(){
 }
 
 //neural network
-/*
+
 int main(){
     // rew train data
     srand(time(NULL));
@@ -340,7 +341,7 @@ int main(){
     vector<vector<lable_node> >         lables;
     vector<double>                      targetVal;
     // raw test data
-    vector<double>                      tTargetval;
+    vector<double>                       tTargetval;
     vector<vector<feature_node> >       tFeatures;
     vector<vector<lable_node> >         tLables;
     vector<double>                      predictTargetVal;
@@ -399,7 +400,7 @@ int main(){
     return 0;
 
 }
-*/
+
 //svm
 /*int main(){
     // rew train data
@@ -507,27 +508,35 @@ void * lms_predict_in(void * p){
 }
 void * lms_in(void * p){
     lmsParams * pp = (lmsParams *) p;
+    printf("enter lms_in, num is %d\n", pp -> groupNum);
+
     lms_train(pp -> groupNum, pp -> weight,input_layer_size, pp -> currentFeature, pp -> currentTargetval);
     //printf("group %d is over\n", pp -> groupNum);
     return NULL;
 }
 
 void lms_train(int groupNum, double *weight, const int num_para , vector<feature_node *>features, vector<double> lables ){
+    printf("enter lms_train\n");
     srand(time(NULL));
+    printf("here, %d\n", groupNum);
     int number_para = num_para;
     double epsilon = 0.1;
+    printf("enter weight loop\n");
     for(int i = 0; i < num_para; i++){
         weight[i] = rand()/10;
+        printf("weight is %f, i is %d\n", weight[i], i);
+
         while(weight[i] >= ini)
             weight[i] /= 10;
         weight[i] -= ini/2;
-        //printf("weight is %f, i is %d\n", weight[i], i);
     }
+    printf("initial over!\n");
     int num_sample = features.size();
     double sum , result, raw_result;
     double err, sq_err;
     int length_of_current_sample;
     int current_feature;
+    printf("enter loop!\n");
     do{
         sum = 0;
         for(int i = 0; i < num_sample ; i++){
@@ -551,7 +560,7 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
         }
         sum /= num_sample;
         printf("sum is %f\n", sum);
-    }while(sum > thres_stop);
+    }while(sum > thres_stop_array[groupNum]);
     printf("quit\n");
     return;
 }
@@ -1255,7 +1264,7 @@ the code of class is like this:
     numOfClass = SectionNUm * 100 + classNum;
 Since classNUm is a two digit number, it is enough to do so
 */
-/*
+
 int classify_2(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
@@ -1294,10 +1303,13 @@ int classify_2(vector< vector<lable_node> > &lables, \
            }
         }
     }
-    printf("group finished\n");
+    printf("NUM_GROUP is %d\n", NUM_GROUP);
     NUM_POSITIVE = (int)possGroups.size();
     NUM_NEGATIVE = (int)negGroups.size();
     NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    thres_stop_array = new double[NUM_GROUP];
+    for(int i = 0 ;i < NUM_GROUP; i++)
+        thres_stop_array[i] = thres_stop;
     for(int i = 0; i < NUM_GROUP; i++){
         retFeature.push_back(vector<feature_node*>());
         retTargetval.push_back(vector<double>());
@@ -1319,4 +1331,4 @@ int classify_2(vector< vector<lable_node> > &lables, \
         }
     }
     return 0;
-}*/
+}
