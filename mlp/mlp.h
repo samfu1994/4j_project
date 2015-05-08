@@ -1,39 +1,76 @@
-#ifndef _MLP_HEAD_
-#define _MLP_HEAD_
+/*********************************************************************
+ * File  : mlp.h
+ * Author: Sylvain BARTHELEMY
+ *         mailto:sylvain@sylbarth.com
+ *         http://www.sylbarth.com
+ * Date  : 2000-08
+ *********************************************************************/
 
-#include <stdlib.h>
-#include <stdio.h>
+
+#ifndef _MLP_H_
+#define _MLP_H_
+
 #include <vector>
 #include "../liblinear/linear.h"
-
 using namespace std;
 
-class mlp{
-private:
-	// mata data
-	int nInput;
-	int nLayer;
-    int nHide;
-    int nOutput;
 
-    // calculation data
-    vector<double> 			input;
-    vector<vector<double> > wh;
-    vector<vector<double> > wo;
-    vector<double > 		valh;
-    vector<double> 			output;
+struct Neuron {
+  double  x;     /* sortie */
+  double  e;     /* erreur */
+  double* w;     /* poids  */
+  double* dw;    /* dernier poids pour les momentum  */
+  double* wsave; /* poids sauvegard� */
+};
 
+struct Layer {
+  int     nNumNeurons;
+  Neuron* pNeurons;
+};
 
-    void PropagateSignal(feature_node *x);
-    void BackPropagateError();
-    double _random(double start = 0, double end = 1);
-    double phi(double);
+class MultiLayerPerceptron {
+
+  int    nNumLayers;
+  Layer* pLayers;
+
+  double dMSE;
+  double dMAE;
+
+  void RandomWeights();
+
+  void SetInputSignal (double* input);
+  void GetOutputSignal(double* output);
+
+  void SaveWeights();
+  void RestoreWeights();
+
+  void PropagateSignal();
+  void ComputeOutputError(double* target);
+  void BackPropagateError();
+  void AdjustWeights();
+
+  void Simulate(double* input, double* output, double* target, bool training);
+
+  void ConvertFeatureNode(const struct feature_node *x, double *t);
 
 public:
-	mlp(int _nInput, int _nHide ,int _nOutput);
-	void train(const problem *prob, const parameter *param);
-	void predict(const feature_node *x);
 
+  double dEta;
+  double dAlpha;
+  double dGain;
+  double dAvgTestError;
+  
+  MultiLayerPerceptron(int nl, int npl[]);
+  ~MultiLayerPerceptron();
+
+  int Train(const char* fnames);
+  int Train(const struct problem *prob,const struct parameter *param);
+  int Test (const char* fname);
+  int Test (const struct problem *prob,const struct parameter *param);
+  double predict(const struct feature_node *x);
+
+  void Run(const char* fname, const int maxiter);
+  void Run(const struct problem *prob,const struct parameter *param, int maxiter);
 };
 
 #endif

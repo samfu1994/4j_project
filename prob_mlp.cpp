@@ -2,13 +2,12 @@
 #include <stdlib.h>
 #include <fstream>
 #include <vector>
-#include "liblinear/linear.h"
-#include "src/threads.h"
 #include <string.h>
 #include <map>
-#include <algorithm>
-
+#include "liblinear/linear.h"
+#include "src/threads.h"
 #include "mlp/mlp.h"
+#include <algorithm>
 
 using namespace std;
 /* micro defination */
@@ -49,24 +48,24 @@ struct trainThreadParams{
     int         groupNum;
     problem*    prob;
     parameter*  param;
-    model**     retData;
+    MultiLayerPerceptron * mod;
     trainThreadParams(int _gn, \
         problem* _prob, \
-        parameter* _param, \
-        model** _retData )
+        parameter* _param,
+        MultiLayerPerceptron* _mod)
     {
         groupNum = _gn;
         prob = _prob;
         param = _param;
-        retData = _retData;
+        mod = _mod;
     }
 };
 struct preadictThreadParams{
-    vector<model*> * mod;
+    vector<MultiLayerPerceptron*> * mod;
     feature_node* f;
     double * retVal;
     double bias;
-    preadictThreadParams(vector<model*> *_mod, \
+    preadictThreadParams(vector<MultiLayerPerceptron*> *_mod, \
             feature_node* _f, \
             double*ret, \
             double _bias = 0){
@@ -108,8 +107,8 @@ struct predictResult
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-      int NUM_POSITIVE = 50;
-      int NUM_NEGATIVE = 150;
+      int NUM_POSITIVE = 1;
+      int NUM_NEGATIVE = 1;
       int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
@@ -161,7 +160,8 @@ vector<double> autuRoc(threads &poll, \
 
 /* functions */
 int main(){
-    // rew train data
+    int layers[] = {NUM_FEATURE,20,1};
+    // raw train data
     vector<vector<feature_node> >       features;
     vector<vector<lable_node> >         lables;
     vector<double>                      targetVal;
@@ -175,7 +175,7 @@ int main(){
     vector< vector<feature_node* > >    gFeature;
     vector<parameter>                   gParam;
     vector<problem>                     gProb;
-    vector<model*>                      gmodel;
+    vector<MultiLayerPerceptron*>       gmodel;
     // test var
     threads                             poll(8);
 
@@ -187,39 +187,39 @@ int main(){
     // classify trainning data
     classify_3(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
+
     // train
     getGroupParam(gFeature,gTargetval,gParam,gProb);
     gmodel.reserve(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
+        gmodel[i] = new MultiLayerPerceptron(3,layers);
+    }
+    for(int i = 0; i < NUM_GROUP; i++){
         poll.addJob(trainThreadFunc,\
-            new trainThreadParams(i,&gProb[i],&gParam[i],&gmodel[i]));
+            new trainThreadParams(i,&gProb[i],&gParam[i],gmodel[i]));
     }
     poll.wait();
-    printf("predict\n");
-    // predict
+    // // predict
+    // predictTargetVal.reserve(tTargetval.size());
+    // for(unsigned int i = 0; i < tFeatures.size(); i++){
+    //     poll.addJob(predictThreadFunc,\
+    //         new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
+    // }
+    // poll.wait();
+    // predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+    // printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    // vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
 
-    mlp m(5000,100,1);
-
-/*    predictTargetVal.reserve(tTargetval.size());
-    for(unsigned int i = 0; i < tFeatures.size(); i++){
-        poll.addJob(predictThreadFunc,\
-            new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
-    }
-    poll.wait();
-    predictResult pr = getPredictRes(tTargetval,predictTargetVal);
-    printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
-    printf("%f\n", (pr.TP+pr.TN)/(pr.TP+pr.TN+pr.FP+pr.FN));
-    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
-    // get roc
-    printf("GETROC\n");
-    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
-    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
-        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
-    }
- */   
+    // // get roc
+    // printf("GETROC\n");
+    // getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    // for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
+    //     printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
+    // }
     poll.stop();
     return 0;
 }
+/*
 // make sure that there are enough 
 vector<double> autuRoc(threads &poll, \
         vector<vector<feature_node> > &tFeatures, \
@@ -317,6 +317,7 @@ void getRoc(threads &poll, \
         retVal.roc_fpr.push_back(pr.FPR);
     }
 }
+*/
 predictResult getPredictRes(vector<double> &targetVal, \
         vector<double> &predictTargetVal)
 {
@@ -339,6 +340,7 @@ predictResult getPredictRes(vector<double> &targetVal, \
     pr.calculate();
     return pr;
 }
+/*
 void * predictThreadFunc(void *p){
     preadictThreadParams *  pp = (preadictThreadParams*)p;
     vector<model*>&         mod = *(pp->mod);
@@ -362,9 +364,11 @@ void * predictThreadFunc(void *p){
     delete pp;
     return NULL;
 }
+*/
 void * trainThreadFunc(void * p){
     trainThreadParams * pa = (trainThreadParams*)p;
-    *(pa->retData) = train(pa->prob,pa->param);
+    // *(pa->retData) = train(pa->prob,pa->param);
+    pa->mod->Run(pa->prob,pa->param,100);
     delete pa;
     return NULL;
 }
@@ -407,7 +411,7 @@ int readData(const char * fileName, \
     int N = 0;
     feature_node tfeature;
     lable_node tlable;
-    while(feof(fin) == 0){
+    while(feof(fin) == 0 ){
         lables.push_back(vector<lable_node>());
         features.push_back(vector<feature_node>());
         while(SCAN_LABLE(fin,tlable))
@@ -687,7 +691,7 @@ int classify_3(vector< vector<lable_node> > &lables, \
     sort(possGroups.begin(),possGroups.end(),compareVectorSize);
     sort(negGroups.begin(),negGroups.end(),compareVectorSize);
     // int meansize = (int)possGroups[possGroups.size()/2].size();
-    int meansize = 8000;
+    int meansize = 2000;
     makeGroup(negGroups,meansize);
     makeGroup(possGroups,meansize);
     cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
