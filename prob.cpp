@@ -17,6 +17,9 @@ const int input_layer_size = 5000;
 const int hidden_layer_size = 200;
 const int iteration_time = 10;
 const int num_labels = 2;
+double thres_C = 0;
+double thres_stop = 100;
+const double lms_learning_rate = 0.1;
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
         (fscanf(fin, \
@@ -216,9 +219,94 @@ int **length_of_group_train, * length_of_group_test;
 MatrixXd * getX_single(int index, feature_node * features);
 VectorXd * getY_single(double lables);
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
+void lms_train(double *weight, const int num_para , vector<vector<feature_node> > features, vector<double> lables );
+void lms_predict(double *weight, const int num_para , vector<vector<feature_node> > features, vector<double> lables );
 /* functions */
 int main(){
     // rew train data
+    srand(time(NULL));
+    vector<vector<feature_node> >       features;
+    vector<vector<lable_node> >         lables;
+    vector<double>                      targetVal;
+    // raw test data
+    vector<double>                      tTargetval;
+    vector<vector<feature_node> >       tFeatures;
+    vector<vector<lable_node> >         tLables;
+    vector<double>                      predictTargetVal;
+    // train var
+    vector<vector<double> >             gTargetval;
+    vector< vector<feature_node* > >    gFeature;
+    vector<parameter>                   gParam;
+    vector<problem>                     gProb;
+    vector<model*>                      gmodel;
+    // test var
+    //threads                             pool(1);
+    vector<cost_return_node *>          gNode;
+    // read data
+    int train_num = readData("data/train.txt",lables,features);
+    int test_num = readData("data/test.txt",tLables,tFeatures);
+    double * weight;
+    weight = new double [input_layer_size];
+    getTargetVal(lables,targetVal);
+    getTargetVal(tLables,tTargetval);
+    printf("start training\n");
+    lms_train(weight, input_layer_size, features, targetVal);
+    printf("training over!\n");
+    printf("start predicting\n");
+    lms_predict(weight, input_layer_size, tFeatures, tTargetval);
+    //printf("lms training is finish!\n");
+    /*
+    length_of_group_train = new int * [NUM_GROUP];
+    int group_size = train_num / NUM_POSITIVE + train_num / NUM_NEGATIVE + 2;
+    for(int i = 0; i < NUM_GROUP; i++){
+        length_of_group_train[i] = new int [group_size];
+        for(int j = 0; j < group_size; j++)
+            length_of_group_train[i][j] = 0;
+    }
+    length_of_group_test = new int[test_num];
+    for(int i = 0; i < test_num; i++){
+        length_of_group_test[i] = tFeatures[i].size();
+    }
+    //nn_drive(lables, features);
+    // classify trainning data
+    classify(lables,features,gFeature,gTargetval);
+    printf("Finished classify\n");
+
+    // train
+    gNode.reserve(NUM_GROUP);
+    printf("start training\n");
+    for(int i = 0; i < NUM_GROUP; i++){
+        pool.addJob(trainnnFunc,\
+            new nnParams(i, &gNode[i], gFeature[i], gTargetval[i]));
+    }
+    pool.wait();
+    // predict
+    printf("start predicting\n");
+    predictTargetVal.reserve(tTargetval.size());
+    for(unsigned int i = 0; i < tFeatures.size(); i++){
+        pool.addJob(predictnnFunc,\
+            new preadictnnParams(i, &gNode,tFeatures[i].data(),&(predictTargetVal[i]) ));
+    }
+    pool.wait();
+    predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+    printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    vector<double> bias = autuRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc);
+    // get roc
+    printf("GETROC\n");
+    getRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
+        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
+    }
+
+    pool.stop();
+    */
+    return 0;
+
+}
+/*
+int main(){
+    // rew train data
+    srand(time(NULL));
     vector<vector<feature_node> >       features;
     vector<vector<lable_node> >         lables;
     vector<double>                      targetVal;
@@ -276,22 +364,16 @@ int main(){
     pool.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
-    /*
-    vector<double> bias = autuRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc);
-    // get roc
-    printf("GETROC\n");
-    getRoc(pool,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
-    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
-        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
-    }
-    */
+
     pool.stop();
 
     return 0;
 
 }
+*/
 /*int main(){
     // rew train data
+    srand(time(NULL));
     vector<vector<feature_node> >       features;
     vector<vector<lable_node> >         lables;
     vector<double>                      targetVal;
@@ -349,6 +431,79 @@ int main(){
     return 0;
 }
 */
+void lms_predict(double *weight, const int num_para , vector<vector<feature_node> > features, vector<double> lables ){
+     int num_sample = features.size() -6000;
+     int right = 0, wrong = 1;
+     double raw_result, result;
+     int length_of_current_sample;
+     int current_feature;
+     for(int i = 0; i < num_sample ; i++){
+        //printf("test : i = %d\n", i);
+            raw_result = 0;
+            length_of_current_sample = features[i].size();
+            for(int j = 0; j < length_of_current_sample; j++){
+                current_feature = features[i][j].index;
+                raw_result += weight[current_feature] * features[i][current_feature].value;
+            }
+            if(raw_result > thres_C)
+                result = 1;
+            else
+                result = -1;
+            if(result == lables[i])
+                right += 1;
+            else
+                wrong += 1;
+
+    }
+    printf("accuracy : %f\n", double(right)/ double(num_sample)) ;
+    return;
+}
+void lms_train(double *weight, const int num_para , vector<vector<feature_node> > features, vector<double> lables ){
+    srand(time(NULL));
+    int number_para = num_para;
+    double epsilon = 0.1;
+    for(int i = 0; i < num_para; i++){
+        weight[i] = rand()/10;
+        while(weight[i] >= 0.1)
+            weight[i] /= 10;
+        weight[i] -= 0.05;
+        //printf("weight is %f, i is %d\n", weight[i], i);
+    }
+    printf("have initialized features!\n");
+    int num_sample = features.size() - 20000;
+    double sum , result, raw_result;
+    double err, sq_err;
+    int length_of_current_sample;
+    int current_feature;
+    do{
+        sum = 0;
+        for(int i = 0; i < num_sample ; i++){
+            //printf("i is %d\n", i);
+            raw_result = 0;
+            length_of_current_sample = features[i].size();
+            for(int j = 0; j < length_of_current_sample; j++){
+                current_feature = features[i][j].index;
+                raw_result += weight[current_feature] * features[i][current_feature].value;
+            }
+            if(raw_result > thres_C)
+                result = 1;
+            else
+                result = -1;
+            err = lables[i] - result;
+            sq_err = err * err;
+            sum += sq_err;
+            //update
+            for(int j = 0; j < length_of_current_sample; j++){
+                current_feature = features[i][j].index;
+                weight[current_feature] += lms_learning_rate * err * features[i][current_feature].value;
+            }
+        }
+        //printf("quit loop\n");
+        sum /= num_sample;
+        printf("sum is %f\n", sum);
+    }while(sum > thres_stop);
+    return;
+}
 // make sure that there are enough
 vector<double> autuRoc(threads &pool, \
         vector<vector<feature_node> > &tFeatures, \
@@ -980,11 +1135,13 @@ VectorXd * unroll(MatrixXd * one, MatrixXd * two){
 }
 MatrixXd * initialize_para(int input_size, int output_size){
     srand(time(NULL));
-    int epsilon = 0.10;
     MatrixXd * mat = new MatrixXd(input_size, output_size);
     for(int i = 0; i < input_size; i++){
         for(int j = 0; j < output_size; j++){
-            (*mat)(i,j) = rand()%1000 / 1000 * 2 * epsilon - epsilon;
+            (*mat)(i,j) = rand()/10;
+            while((*mat)(i,j) >= 0.1)
+                (*mat)(i,j)/= 10;
+            (*mat)(i,j) -= 0.05;
         }
     }
     return mat;
