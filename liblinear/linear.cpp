@@ -2526,6 +2526,35 @@ double predict_values(const struct model *model_, const struct feature_node *x, 
 		return model_->label[dec_max_idx];
 	}
 }
+double predict_values_raw(const struct model *model_, const struct feature_node *x, double *dec_values)
+{
+	int idx;
+	int n;
+	if(model_->bias>=0)
+		n=model_->nr_feature+1;
+	else
+		n=model_->nr_feature;
+	double *w=model_->w;
+	int nr_class=model_->nr_class;
+	int i;
+	int nr_w;
+	if(nr_class==2 && model_->param.solver_type != MCSVM_CS)
+		nr_w = 1;
+	else
+		nr_w = nr_class;
+
+	const feature_node *lx=x;
+	for(i=0;i<nr_w;i++)
+		dec_values[i] = 0;
+	for(; (idx=lx->index)!=-1; lx++)
+	{
+		// the dimension of testing data may exceed that of training
+		if(idx<=n)
+			for(i=0;i<nr_w;i++)
+				dec_values[i] += w[(idx-1)*nr_w+i]*lx->value;
+	}
+	return dec_values[0];
+}
 double predict_values_roc(const struct model *model_, const struct feature_node *x, double *dec_values, double bias)
 {
 	int idx;
@@ -2577,6 +2606,13 @@ double predict(const model *model_, const feature_node *x)
 {
 	double *dec_values = Malloc(double, model_->nr_class);
 	double label=predict_values(model_, x, dec_values);
+	free(dec_values);
+	return label;
+}
+double predict_raw(const model *model_, const feature_node *x)
+{
+	double *dec_values = Malloc(double, model_->nr_class);
+	double label=predict_values_raw(model_, x, dec_values);
 	free(dec_values);
 	return label;
 }

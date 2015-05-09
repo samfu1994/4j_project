@@ -7,6 +7,8 @@
 #include <string.h>
 #include <map>
 #include <algorithm>
+#include <time.h>
+ #include <sys/time.h>
 
 using namespace std;
 /* micro defination */
@@ -106,8 +108,8 @@ struct predictResult
 
 /* const defination */
 const int NUM_FEATURE = 5001;
-      int NUM_POSITIVE = 50;
-      int NUM_NEGATIVE = 150;
+      int NUM_POSITIVE = 3;
+      int NUM_NEGATIVE = 9;
       int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
@@ -156,6 +158,11 @@ vector<double> autuRoc(threads &poll, \
         vector<double> &tTargetval,\
         vector<model*> &gmodel, \
         void*(*func)(void*) );
+void new_getRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        predictResult & retVal );
 
 /* functions */
 int main(){
@@ -176,14 +183,21 @@ int main(){
     vector<model*>                      gmodel;
     // test var
     threads                             poll(8);
-
+    // time measure
+    clock_t start;
+    clock_t end;
+    timeval starttime,endtime;
     // read data
     readData("data/train.txt",lables,features);
     readData("data/test.txt",tLables,tFeatures);
+
+    start = clock();
+    gettimeofday(&starttime,0);
+
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
     // classify trainning data
-    classify_3(lables,features,gFeature,gTargetval);
+    classify_2(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
     // train
     getGroupParam(gFeature,gTargetval,gParam,gProb);
@@ -202,8 +216,16 @@ int main(){
     }
     poll.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+
+    end = clock();
+    gettimeofday(&endtime,0);
+
+    double timeuse = 1000000*(endtime.tv_sec - starttime.tv_sec) + endtime.tv_usec - starttime.tv_usec;
+    timeuse /=1000;
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
     printf("%f\n", (pr.TP+pr.TN)/(pr.TP+pr.TN+pr.FP+pr.FN));
+    printf("Time1: %f\n", ((double)(end- start)) / ((double)CLOCKS_PER_SEC) );
+    printf("Time2: %f\n", timeuse );
 /*    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
     // get roc
     printf("GETROC\n");
@@ -212,8 +234,89 @@ int main(){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
  */   
+    // new_getRoc(poll,tFeatures,tTargetval,gmodel,pr);
     poll.stop();
     return 0;
+}
+void * predictThreadFunc_raw(void *p){
+    preadictThreadParams *  pp = (preadictThreadParams*)p;
+    vector<model*>&         mod = *(pp->mod);
+    vector<double>          mins;
+    mins.reserve(NUM_POSITIVE);
+    // MIN
+    double t;
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        t = predict_raw(mod[i],pp->f);
+        for(int j = i+NUM_POSITIVE; j < NUM_GROUP;j+=NUM_POSITIVE){
+            t = min(t,predict_raw(mod[j],pp->f));
+        }
+        mins[i] = t;
+    }
+    // MAX
+    t = mins[0];
+    for(int i = 1;i < NUM_POSITIVE;i++){
+        t = max(t,mins[i]);
+    }
+    *(pp->retVal) = t;
+    delete pp;
+    return NULL;
+}
+void new_getRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        predictResult & retVal )
+{
+    int numPoints = 10;
+    int pstep,nstep;
+    vector<double> predictTargetVal;
+    predictTargetVal.reserve(tTargetval.size());
+    std::vector<double> pp;
+    std::vector<double> pn;
+    for(unsigned int i = 0; i < tTargetval.size(); i++){
+        predictTargetVal.push_back(0);
+        poll.addJob(predictThreadFunc_raw,\
+            new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
+    }
+    poll.wait();
+    for(int i = 0; i < (int)predictTargetVal.size(); i++){
+        if(tTargetval[i] == 1){
+            pp.push_back(predictTargetVal[i]);
+        }else{
+            pn.push_back(predictTargetVal[i]);
+        }
+    }
+    // printf("Poss %d NEG %d\n", pp.size(),pn.size());
+    sort(pp.begin(),pp.end());
+    sort(pn.begin(),pn.end());
+    for(int i = 0; i < 100; i++){
+        printf("%f %f \n", pp[i],pn[i]);
+    }
+    pstep = pp.size()/numPoints;
+    nstep = pn.size()/numPoints;
+    printf("steps %d %d \n", pstep,nstep);
+    // return ;
+    int n = 0, p = 0;
+    while(1){
+        p += pstep;
+        n += nstep;
+        if(p >= (int)pp.size() && n >= (int)pn.size()){
+            break;
+        }
+        p = min(p,(int)pp.size()-1);
+        n = min(n,(int)pn.size()-1);
+        printf("size %d %d\n", p,n);
+        if(pp[p]>pn[n]){
+            while(pp[p] > pn[n] && p > 0) p--;
+        }else{
+            while(pp[p] < pn[n] && n > 0) n--;
+        }
+        retVal.roc_tpr.push_back((double)(pp.size()-p)/(pp.size()-p+pn.size()-n));
+        retVal.roc_fpr.push_back((double)(n)/(p+n));
+    }
+    for(int i = 0; i <(int)retVal.roc_tpr.size(); i++){
+        printf("%f  %f\n", retVal.roc_tpr[i], retVal.roc_fpr[i]);
+    }
 }
 // make sure that there are enough 
 vector<double> autuRoc(threads &poll, \
@@ -682,7 +785,7 @@ int classify_3(vector< vector<lable_node> > &lables, \
     sort(possGroups.begin(),possGroups.end(),compareVectorSize);
     sort(negGroups.begin(),negGroups.end(),compareVectorSize);
     // int meansize = (int)possGroups[possGroups.size()/2].size();
-    int meansize = 8000;
+    int meansize = 2000;
     makeGroup(negGroups,meansize);
     makeGroup(possGroups,meansize);
     cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
