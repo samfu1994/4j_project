@@ -234,7 +234,7 @@ int main(){
         printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
  */   
-    // new_getRoc(poll,tFeatures,tTargetval,gmodel,pr);
+    new_getRoc(poll,tFeatures,tTargetval,gmodel,pr);
     poll.stop();
     return 0;
 }
@@ -267,7 +267,7 @@ void new_getRoc(threads &poll, \
         vector<model*> &gmodel, \
         predictResult & retVal )
 {
-    int numPoints = 10;
+    int numPoints = 500;
     int pstep,nstep;
     vector<double> predictTargetVal;
     predictTargetVal.reserve(tTargetval.size());
@@ -300,7 +300,7 @@ void new_getRoc(threads &poll, \
     while(1){
         p += pstep;
         n += nstep;
-        if(p >= (int)pp.size() && n >= (int)pn.size()){
+        if(p >= (int)pp.size() || n >= (int)pn.size()){
             break;
         }
         p = min(p,(int)pp.size()-1);
@@ -312,7 +312,7 @@ void new_getRoc(threads &poll, \
             while(pp[p] < pn[n] && n > 0) n--;
         }
         retVal.roc_tpr.push_back((double)(pp.size()-p)/(pp.size()-p+pn.size()-n));
-        retVal.roc_fpr.push_back((double)(n)/(p+n));
+        retVal.roc_fpr.push_back((double)(p)/(p+n));
     }
     for(int i = 0; i <(int)retVal.roc_tpr.size(); i++){
         printf("%f  %f\n", retVal.roc_tpr[i], retVal.roc_fpr[i]);
