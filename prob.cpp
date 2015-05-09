@@ -18,7 +18,7 @@ const int hidden_layer_size = 20;
 const int iteration_time = 1;
 const int num_labels = 2;
 double thres_C = 0;
-double thres_stop = 5;
+double thres_stop = 2;
 double * thres_stop_array;
 double ini = 0.001;
 const double lms_learning_rate = 0.0001;
@@ -257,7 +257,7 @@ cost_return_node *  nn_train(vector<double> &lables, vector<feature_node *> &fea
 MatrixXd * getX_single(int index, feature_node * features);
 VectorXd * getY_single(double lables);
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
-void lms_train(int ,double *weight, const int num_para , vector<feature_node *> &features, vector<double> &lables );
+void lms_train(int ,double *weight, const int num_para ,const vector<feature_node *> &features,const vector<double> &lables );
 double lms_predict(int, double * weight, const int num_para , feature_node * features, double * lables);
 void * lms_in(void * p);
 void * lms_predict_in(void * p);
@@ -299,7 +299,7 @@ int main(){
     // train
     weight.resize(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++)
-        weight[i] = new double[NUM_FEATURE];
+        weight[i] = new double[NUM_FEATURE+1];
     printf("start training, NUM_GROUP is %d\n", NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
         // pool.addJob(lms_in,\
@@ -308,11 +308,11 @@ int main(){
         lms_train(i,weight[i],NUM_FEATURE,gFeature[i],gTargetval[i]);
     }
     pool.wait();
+    pool.stop();
+    return 0;
     // predict
     printf("start predicting\n");
     // predictTargetVal.resize(tTargetval.size());
-    pool.stop();
-    return 0;
     for(unsigned int i = 0; i < tFeatures.size(); i++){
         // pool.addJob(lms_predict_in,\
         //     new lmsPredictParams(i, weight ,tFeatures[i].data(),&(predictTargetVal[i]) ));
@@ -509,9 +509,9 @@ void * lms_in(void * p){
     return NULL;
 }
 
-void lms_train(int groupNum, double *weight, const int num_para , vector<feature_node *>&features, vector<double> &lables ){
+void lms_train(int groupNum, double *weight, const int num_para ,const vector<feature_node *>&features,const vector<double> &lables ){
     printf("enter lms_train\n");
-    srand(time(NULL));
+    // srand(time(NULL));
     printf("here, %d\n", groupNum);
     int number_para = num_para;
     double epsilon = 0.1;
@@ -537,7 +537,7 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
             int j = 0;
             while(features[i][j].index != -1){
                 current_feature = features[i][j].index;
-                raw_result += weight[current_feature] * features[i][current_feature].value;
+                raw_result += weight[current_feature] * features[i][j].value;
                 j++;
             }
             if(raw_result > thres_C)
@@ -551,13 +551,13 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
             j = 0;
             while(features[i][j].index != -1){
                 current_feature = features[i][j].index;
-                weight[current_feature] += lms_learning_rate * err * features[i][current_feature].value;
+                weight[current_feature] += lms_learning_rate * err * features[i][j].value;
                 j++;
             }
         }
         sum /= num_sample;
         printf("sum is %f\n", sum);
-    }while(sum > thres_stop_array[groupNum]);
+    }while(sum > thres_stop);
     printf("quit\n");
     return;
 }
