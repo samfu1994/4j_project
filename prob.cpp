@@ -18,15 +18,15 @@ const int hidden_layer_size = 20;
 const int iteration_time = 1;
 const int num_labels = 2;
 double thres_C = 0;
-double thres_stop = 100;
+double thres_stop = 5;
 double * thres_stop_array;
 double ini = 0.001;
 const double lms_learning_rate = 0.0001;
 
 const int NUM_FEATURE = 5001;
-const int NUM_POSITIVE = 3;
-const int NUM_NEGATIVE = 9;
-const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
+      int NUM_POSITIVE = 3;
+      int NUM_NEGATIVE = 9;
+      int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
 const feature_node biasFeature = {NUM_FEATURE,BIAS};
@@ -107,7 +107,7 @@ struct lmsParams{
     double *    weight;
     vector<feature_node* >  currentFeature;
     vector<double > currentTargetval;
-    lmsParams(int _gn, double * w, vector<feature_node* > &f, vector<double > &t)
+    lmsParams(int _gn, double * w, vector<feature_node* > f, vector<double > t)
     {
         groupNum = _gn;
         paraNum = input_layer_size;
@@ -217,6 +217,10 @@ int classify_2(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
         vector<vector<double> > &retTargetval);
+int classify_3(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval);
 int getGroupParam(vector< vector<feature_node* > > &gFeature , \
         vector<vector<double> > &gTargetval , \
         vector<parameter> &retParam, \
@@ -253,7 +257,7 @@ cost_return_node *  nn_train(vector<double> &lables, vector<feature_node *> &fea
 MatrixXd * getX_single(int index, feature_node * features);
 VectorXd * getY_single(double lables);
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
-void lms_train(int ,double *weight, const int num_para , vector<feature_node *> features, vector<double> lables );
+void lms_train(int ,double *weight, const int num_para , vector<feature_node *> &features, vector<double> &lables );
 double lms_predict(int, double * weight, const int num_para , feature_node * features, double * lables);
 void * lms_in(void * p);
 void * lms_predict_in(void * p);
@@ -295,19 +299,24 @@ int main(){
     // train
     weight.resize(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++)
-        weight[i] = new double[input_layer_size];
+        weight[i] = new double[NUM_FEATURE];
     printf("start training, NUM_GROUP is %d\n", NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
-        pool.addJob(lms_in,\
-            new lmsParams(i, weight[i], gFeature[i], gTargetval[i]));
+        // pool.addJob(lms_in,\
+        //     new lmsParams(i, weight[i], gFeature[i], gTargetval[i]));
+        // pool.wait();
+        lms_train(i,weight[i],NUM_FEATURE,gFeature[i],gTargetval[i]);
     }
     pool.wait();
     // predict
     printf("start predicting\n");
-    predictTargetVal.reserve(tTargetval.size());
+    // predictTargetVal.resize(tTargetval.size());
+    pool.stop();
+    return 0;
     for(unsigned int i = 0; i < tFeatures.size(); i++){
-        pool.addJob(lms_predict_in,\
-            new lmsPredictParams(i, weight ,tFeatures[i].data(),&(predictTargetVal[i]) ));
+        // pool.addJob(lms_predict_in,\
+        //     new lmsPredictParams(i, weight ,tFeatures[i].data(),&(predictTargetVal[i]) ));
+
     }
     pool.wait();
     double tmp_accuracy = 0;
@@ -452,7 +461,7 @@ double lms_predict(int index, double * weight, const int num_para , feature_node
             int j = 0;
             while(features[j].index != -1){
                 current_feature = features[j].index;
-                raw_result += weight[current_feature] * features[current_feature].value;
+                raw_result += weight[current_feature] * features[j].value;
                 j++;
             }
             if(raw_result > thres_C)
@@ -462,7 +471,7 @@ double lms_predict(int index, double * weight, const int num_para , feature_node
             return result;
 }
 void * lms_predict_in(void * p){
-    //printf("enter lms_predict_in\n");
+    printf("enter lms_predict_in\n");
     lmsPredictParams * pp = (lmsPredictParams *) p;;
     vector<double>          mins;
     mins.reserve(NUM_POSITIVE);
@@ -494,12 +503,13 @@ void * lms_in(void * p){
     printf("dddddddddddd\n");
     lmsParams * pp = (lmsParams *) p;
     printf("enter lms_in, num is %d\n", pp -> groupNum);
-    lms_train(pp -> groupNum, pp -> weight,input_layer_size, pp -> currentFeature, pp -> currentTargetval);
+    lms_train(pp -> groupNum, pp -> weight,NUM_FEATURE, pp -> currentFeature, pp -> currentTargetval);
     //printf("group %d is over\n", pp -> groupNum);
+    delete pp;
     return NULL;
 }
 
-void lms_train(int groupNum, double *weight, const int num_para , vector<feature_node *>features, vector<double> lables ){
+void lms_train(int groupNum, double *weight, const int num_para , vector<feature_node *>&features, vector<double> &lables ){
     printf("enter lms_train\n");
     srand(time(NULL));
     printf("here, %d\n", groupNum);
@@ -809,47 +819,47 @@ int getTargetVal(vector<vector<lable_node> > & labs, \
     return 0;
 }
 
-/*
-    Use a code techque to code and decode classfications;
-    For possitive class i and negtive class j as a group,
-    The group number is k = j + i * NUM_POSITIVE;
-    That is a posstive origented code. for convenienct of
-    latter MAX and MIN operations.
-*/
-int classify(vector< vector<lable_node> > &lables, \
-        vector< vector<feature_node> >&features, \
-        vector< vector<feature_node* > > & retFeature , \
-        vector<vector<double> > &retTargetval)
-{
-    int counterP = 0;
-    int counterN = 0;
-    retFeature.clear();
-    retTargetval.clear();
-    // create data streucture
-    for(int i = 0; i < NUM_GROUP; i++){
-        retTargetval.push_back(vector<double> ());
-        retFeature.push_back(vector<feature_node*>());
-    }
-    // classify data
-    for (int i = 0; i < (int)features.size(); ++i){
-        if(lables[i][0].Section == 'A'){
-            for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
-                retFeature[j].push_back(features[i].data());
-                retTargetval[j].push_back(1);
-            }
-            counterP++;
-            counterP = counterP % NUM_POSITIVE;
-        }else{
-            for(int j = counterN*NUM_POSITIVE; j < counterN*NUM_POSITIVE+NUM_POSITIVE; j++){
-                retFeature[j].push_back(features[i].data());
-                retTargetval[j].push_back(-1);
-            }
-            counterN++;
-            counterN = counterN % NUM_NEGATIVE;
-        }
-    }
-    return 0;
-}
+// /*
+//     Use a code techque to code and decode classfications;
+//     For possitive class i and negtive class j as a group,
+//     The group number is k = j + i * NUM_POSITIVE;
+//     That is a posstive origented code. for convenienct of
+//     latter MAX and MIN operations.
+// */
+// int classify(vector< vector<lable_node> > &lables, \
+//         vector< vector<feature_node> >&features, \
+//         vector< vector<feature_node* > > & retFeature , \
+//         vector<vector<double> > &retTargetval)
+// {
+//     int counterP = 0;
+//     int counterN = 0;
+//     retFeature.clear();
+//     retTargetval.clear();
+//     // create data streucture
+//     for(int i = 0; i < NUM_GROUP; i++){
+//         retTargetval.push_back(vector<double> ());
+//         retFeature.push_back(vector<feature_node*>());
+//     }
+//     // classify data
+//     for (int i = 0; i < (int)features.size(); ++i){
+//         if(lables[i][0].Section == 'A'){
+//             for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
+//                 retFeature[j].push_back(features[i].data());
+//                 retTargetval[j].push_back(1);
+//             }
+//             counterP++;
+//             counterP = counterP % NUM_POSITIVE;
+//         }else{
+//             for(int j = counterN*NUM_POSITIVE; j < counterN*NUM_POSITIVE+NUM_POSITIVE; j++){
+//                 retFeature[j].push_back(features[i].data());
+//                 retTargetval[j].push_back(-1);
+//             }
+//             counterN++;
+//             counterN = counterN % NUM_NEGATIVE;
+//         }
+//     }
+//     return 0;
+// }
 MatrixXd * getX_single(int index, feature_node * features){
     MatrixXd * X = new MatrixXd(1, input_layer_size);
         int n = 0;
@@ -1192,6 +1202,266 @@ MatrixXd * initialize_para(int input_size, int output_size){
     }
     return mat;
 }
+
+/*
+    Use a code techque to code and decode classfications;
+    For possitive class i and negtive class j as a group,
+    The group number is k = j + i * NUM_POSITIVE;
+    That is a posstive origented code. for convenienct of
+    latter MAX and MIN operations.
+*/
+int classify(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    int counterP = 0;
+    int counterN = 0;
+    retFeature.clear();
+    retTargetval.clear();
+    // create data streucture
+    for(int i = 0; i < NUM_GROUP; i++){
+        retTargetval.push_back(vector<double> ());
+        retFeature.push_back(vector<feature_node*>());
+    }
+    // classify data
+    for (int i = 0; i < (int)features.size(); ++i){
+        if(lables[i][0].Section == 'A'){
+            for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
+                retFeature[j].push_back(features[i].data());
+                retTargetval[j].push_back(1);
+            }
+            counterP++;
+            counterP = counterP % NUM_POSITIVE;
+        }else{
+            for(int j = counterN*NUM_POSITIVE; j < counterN*NUM_POSITIVE+NUM_POSITIVE; j++){
+                retFeature[j].push_back(features[i].data());
+                retTargetval[j].push_back(-1);
+            }
+            counterN++;
+            counterN = counterN % NUM_NEGATIVE;
+        }
+    }
+    return 0;
+}
+
+// this group the data with the same section together.
+// So there is only one possitive group, and serveral negiive group
+int classify_1(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<char, int>                  secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<feature_node*>           possGroups;
+    vector<double>                  possVals;
+    // get single poss and negtive groups
+    for(int i = 0; i < (int)lables.size(); i++){
+        if(lables[i][0].Section == 'A'){
+            possGroups.push_back(features[i].data());
+            possVals.push_back(1);
+        }else{
+            if(secToIndex.find(lables[i][0].Section) == secToIndex.end()){
+                secToIndex[lables[i][0].Section] = (int)negGroups.size();
+                negGroups.push_back(vector<feature_node*>());
+                negVals.push_back(vector<double> ());
+            }
+            negGroups[secToIndex[lables[i][0].Section]].push_back(features[i].data());
+            negVals[secToIndex[lables[i][0].Section]].push_back(-1);
+        }
+    }
+    NUM_POSITIVE = 1;
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    // retFeature.reserve(NUM_GROUP);
+    // retTargetval.reserve(NUM_GROUP);
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(possGroups);
+        retTargetval.push_back(possVals);
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            retFeature[i].push_back(negGroups[i][j]);
+            retTargetval[i].push_back(negVals[i][j]);
+        }
+    }
+    return 0;
+}
+
+void cardProduct(vector<vector<feature_node*> >  &negGroups,\
+        vector<vector<double> >         &negVals,\
+        vector<vector<feature_node*> >  &possGroups,\
+        vector<vector<double> >         &possVals,\
+        vector< vector<feature_node* > > & retFeature,\
+        vector<vector<double> > &retTargetval        )
+{
+    NUM_POSITIVE = (int)possGroups.size();
+    NUM_NEGATIVE = (int)negGroups.size();
+    NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    for(int i = 0; i < NUM_GROUP; i++){
+        retFeature.push_back(vector<feature_node*>());
+        retTargetval.push_back(vector<double>());
+    }
+    for(int i = 0; i < NUM_POSITIVE; i++){
+        for(int j = 0; j < (int)possGroups[i].size(); j++){
+            for(int k = i; k < NUM_GROUP; k+=NUM_POSITIVE){
+                retFeature[k].push_back(possGroups[i][j]);
+                retTargetval[k].push_back(1);
+            }
+        }
+    }
+    for(int i = 0; i < NUM_NEGATIVE; i++){
+        for(int j = 0; j < (int)negGroups[i].size(); j++){
+            for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
+                retFeature[k].push_back(negGroups[i][j]);
+                retTargetval[k].push_back(-1);
+            }
+        }
+    }
+
+}
+/*
+this group the data with the same Class together.
+So there is only one possitive group, and serveral negiive group
+the code of class is like this:
+    numOfClass = SectionNUm * 100 + classNum;
+Since classNUm is a two digit number, it is enough to do so
+*/
+int classify_2(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<int, int>                   secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<vector<feature_node*> >  possGroups;
+    vector<vector<double> >         possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    int code;
+    for(int i = 0; i < (int)lables.size(); i++){
+        for(int j = 0; j < (int)lables[i].size(); j++){
+           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
+           if(lables[i][0].Section == 'A'){
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)possGroups.size();
+                    possGroups.push_back(vector<feature_node*>());
+                    possVals.push_back(vector<double>());
+                }
+                possGroups[secToIndex[code]].push_back(features[i].data());
+                possVals[secToIndex[code]].push_back(1);
+           }else{
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)negGroups.size();
+                    negGroups.push_back(vector<feature_node*>());
+                    negVals.push_back(vector<double>());
+                }
+                negGroups[secToIndex[code]].push_back(features[i].data());
+                negVals[secToIndex[code]].push_back(1);
+           }
+        }
+    }
+    cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
+    printf("group finished\n");
+    return 0;
+}
+
+bool compareVectorSize(vector<feature_node*>i, vector<feature_node*> j ){
+    return i.size() < j.size();
+}
+// a <-- a U b;
+// b = empty;
+template <class T>
+void mergeVector(vector<T> &a, vector<T> &b){
+    a.insert(a.end(), b.begin(),b.end());
+    b.clear();
+}
+// arrange group that each group is 0.75size ~~ 1.5 size
+void makeGroup(vector<vector<feature_node*> > &t,int size){
+    for(int i = 1; i < (int)t.size(); i++){
+        if(t[i-1].size() + t[i].size() < size * 1.5){
+            mergeVector(t[i],t[i-1]);
+        }
+    }
+    for(int i = 0; i < (int)t.size(); ){
+        if(t[i].size() > size*1.5){
+            t.push_back(vector<feature_node*>());
+            t.back().insert(t.back().end(),t[i].end()-t[i].size()/2,t[i].end());
+            t[i].erase(t[i].end()-t[i].size()/2,t[i].end());
+        }else{
+            i++;
+        }
+    }
+    for(vector<vector<feature_node*> >::iterator i = t.begin();i != t.end();){
+        if(i->size()){
+            i++;
+        }else{
+            i = t.erase(i);
+        }
+    }
+}
+/*
+    classify using class information, balanced way
+*/
+int classify_3(vector< vector<lable_node> > &lables, \
+        vector< vector<feature_node> >&features, \
+        vector< vector<feature_node* > > & retFeature , \
+        vector<vector<double> > &retTargetval)
+{
+    retFeature.clear();
+    retTargetval.clear();
+    // tmpval
+    map<int, int>                   secToIndex;
+    vector<vector<feature_node*> >  negGroups;
+    vector<vector<double> >         negVals;
+    vector<vector<feature_node*> >  possGroups;
+    vector<vector<double> >         possVals;
+    printf("classify\n");
+    // get single poss and negtive groups
+    int code;
+    for(int i = 0; i < (int)lables.size(); i++){
+        for(int j = 0; j < (int)lables[i].size(); j++){
+           code = ((int)lables[i][j].Section)*100 + lables[i][j].Class;
+           if(lables[i][0].Section == 'A'){
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)possGroups.size();
+                    possGroups.push_back(vector<feature_node*>());
+                    // possVals.push_back(vector<double>());
+                }
+                possGroups[secToIndex[code]].push_back(features[i].data());
+                // possVals[secToIndex[code]].push_back(1);
+           }else{
+                if(secToIndex.find(code)==secToIndex.end()){
+                    secToIndex[code] = (int)negGroups.size();
+                    negGroups.push_back(vector<feature_node*>());
+                    // negVals.push_back(vector<double>());
+                }
+                negGroups[secToIndex[code]].push_back(features[i].data());
+                // negVals[secToIndex[code]].push_back(1);
+           }
+        }
+    }
+    sort(possGroups.begin(),possGroups.end(),compareVectorSize);
+    sort(negGroups.begin(),negGroups.end(),compareVectorSize);
+    // int meansize = (int)possGroups[possGroups.size()/2].size();
+    int meansize = 8000;
+    makeGroup(negGroups,meansize);
+    makeGroup(possGroups,meansize);
+    cardProduct(negGroups,negVals,possGroups,possVals,retFeature,retTargetval);
+    // printf("group finished\n");
+    return 0;
+}
+
+
 // this group the data with the same section together.
 // So there is only one possitive group, and serveral negiive group
 /*
