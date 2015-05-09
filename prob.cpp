@@ -22,6 +22,15 @@ double thres_stop = 100;
 double * thres_stop_array;
 double ini = 0.001;
 const double lms_learning_rate = 0.0001;
+
+const int NUM_FEATURE = 5001;
+const int NUM_POSITIVE = 3;
+const int NUM_NEGATIVE = 9;
+const int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
+const double BIAS = 1;
+const feature_node endOfFeature = {-1,0};
+const feature_node biasFeature = {NUM_FEATURE,BIAS};
+
 /* micro defination */
 #define SCAN_LABLE(fin,l) \
         (fscanf(fin, \
@@ -188,13 +197,6 @@ struct predictResult
 };
 
 /* const defination */
-const int NUM_FEATURE = 5001;
-int NUM_POSITIVE = 3;
-int NUM_NEGATIVE = 9;
-int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
-const double BIAS = 1;
-const feature_node endOfFeature = {-1,0};
-const feature_node biasFeature = {NUM_FEATURE,BIAS};
 
 /* function prototype */
 
@@ -248,7 +250,6 @@ void * trainThreadFunc(void * p);
 void * trainnnFunc(void * p);
 void * predictnnFunc(void *p);
 cost_return_node *  nn_train(vector<double> &lables, vector<feature_node *> &features);
-int **length_of_group_train, * length_of_group_test;
 MatrixXd * getX_single(int index, feature_node * features);
 VectorXd * getY_single(double lables);
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l);
@@ -285,28 +286,18 @@ int main(){
 
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
-
-    length_of_group_train = new int * [NUM_GROUP];
-    int group_size = train_num / NUM_POSITIVE + train_num / NUM_NEGATIVE + 2;
-    for(int i = 0; i < NUM_GROUP; i++){
-        length_of_group_train[i] = new int [group_size];
-        for(int j = 0; j < group_size; j++)
-            length_of_group_train[i][j] = 0;
-    }
-    length_of_group_test = new int[test_num];
-    for(int i = 0; i < test_num; i++){
-        length_of_group_test[i] = tFeatures[i].size();
-    }
     // classify trainning data
-    classify_2(lables,features,gFeature,gTargetval);
+    classify(lables,features,gFeature,gTargetval);
     printf("Finished classify, num_group is %d\n", NUM_GROUP);
+    thres_stop_array = new double[NUM_GROUP];
+    for(int i = 0 ;i < NUM_GROUP; i++)
+        thres_stop_array[i] = thres_stop;
     // train
     weight.resize(NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++)
-        weight[i] = new double[NUM_FEATURE];
+        weight[i] = new double[input_layer_size];
     printf("start training, NUM_GROUP is %d\n", NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
-        printf("main:: group : %d\n", i);
         pool.addJob(lms_in,\
             new lmsParams(i, weight[i], gFeature[i], gTargetval[i]));
     }
@@ -362,18 +353,7 @@ int main(){
 
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
-    length_of_group_train = new int * [NUM_GROUP];
     int group_size = train_num / NUM_POSITIVE + train_num / NUM_NEGATIVE + 2;
-    for(int i = 0; i < NUM_GROUP; i++){
-        length_of_group_train[i] = new int [group_size];
-        for(int j = 0; j < group_size; j++)
-            length_of_group_train[i][j] = 0;
-    }
-    length_of_group_test = new int[test_num];
-    for(int i = 0; i < test_num; i++){
-        length_of_group_test[i] = tFeatures[i].size();
-    }
-    //nn_drive(lables, features);
     // classify trainning data
     classify(lables,features,gFeature,gTargetval);
     printf("Finished classify\n");
@@ -469,9 +449,11 @@ double lms_predict(int index, double * weight, const int num_para , feature_node
      int length_of_current_sample;
      int current_feature;
             raw_result = 0;
-            for(int j = 0; j < length_of_group_test[index]; j++){
+            int j = 0;
+            while(features[j].index != -1){
                 current_feature = features[j].index;
                 raw_result += weight[current_feature] * features[current_feature].value;
+                j++;
             }
             if(raw_result > thres_C)
                 result = 1;
@@ -509,9 +491,9 @@ void * lms_predict_in(void * p){
     return NULL;
 }
 void * lms_in(void * p){
+    printf("dddddddddddd\n");
     lmsParams * pp = (lmsParams *) p;
     printf("enter lms_in, num is %d\n", pp -> groupNum);
-
     lms_train(pp -> groupNum, pp -> weight,input_layer_size, pp -> currentFeature, pp -> currentTargetval);
     //printf("group %d is over\n", pp -> groupNum);
     return NULL;
@@ -542,9 +524,11 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
         sum = 0;
         for(int i = 0; i < num_sample ; i++){
             raw_result = 0;
-            for(int j = 0; j < length_of_group_train[groupNum][i]; j++){
+            int j = 0;
+            while(features[i][j].index != -1){
                 current_feature = features[i][j].index;
                 raw_result += weight[current_feature] * features[i][current_feature].value;
+                j++;
             }
             if(raw_result > thres_C)
                 result = 1;
@@ -554,9 +538,11 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
             sq_err = err * err;
             sum += sq_err;
             //update
-            for(int j = 0; j < length_of_group_train[groupNum][i]; j++){
+            j = 0;
+            while(features[i][j].index != -1){
                 current_feature = features[i][j].index;
                 weight[current_feature] += lms_learning_rate * err * features[i][current_feature].value;
+                j++;
             }
         }
         sum /= num_sample;
@@ -850,7 +836,6 @@ int classify(vector< vector<lable_node> > &lables, \
             for(int j = counterP; j < NUM_GROUP; j+=NUM_POSITIVE){
                 retFeature[j].push_back(features[i].data());
                 retTargetval[j].push_back(1);
-                length_of_group_train[j][retTargetval[j].size() - 1] = features[i].size();
             }
             counterP++;
             counterP = counterP % NUM_POSITIVE;
@@ -858,7 +843,6 @@ int classify(vector< vector<lable_node> > &lables, \
             for(int j = counterN*NUM_POSITIVE; j < counterN*NUM_POSITIVE+NUM_POSITIVE; j++){
                 retFeature[j].push_back(features[i].data());
                 retTargetval[j].push_back(-1);
-                length_of_group_train[j][retTargetval[j].size() - 1] = features[i].size();
             }
             counterN++;
             counterN = counterN % NUM_NEGATIVE;
@@ -871,7 +855,7 @@ MatrixXd * getX_single(int index, feature_node * features){
         int n = 0;
         for(int j = 0; j < input_layer_size; j++){
             (*X)(1, j) = 0;
-            if(n == length_of_group_test[index])
+            if(features[index].index == -1)
                 continue;
             if(features[n].index == j){
                 n++;
@@ -886,7 +870,7 @@ MatrixXd * getX(int index, vector<feature_node *> &features, int l){
         int n = 0;
         for(int j = 0; j < input_layer_size; j++){
             (*X)(i, j) = 0;
-            if(n == length_of_group_train[index][i])
+            if(features[i][n].index == -1)
                 continue;
             if(features[i][n].index == j){
                 n++;
@@ -1265,7 +1249,7 @@ the code of class is like this:
     numOfClass = SectionNUm * 100 + classNum;
 Since classNUm is a two digit number, it is enough to do so
 */
-
+/*
 int classify_2(vector< vector<lable_node> > &lables, \
         vector< vector<feature_node> >&features, \
         vector< vector<feature_node* > > & retFeature , \
@@ -1307,11 +1291,6 @@ int classify_2(vector< vector<lable_node> > &lables, \
     NUM_POSITIVE = (int)possGroups.size();
     NUM_NEGATIVE = (int)negGroups.size();
     NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
-    printf("classify_2 :::::::::::::::: NUM_GROUP is %d\n", NUM_GROUP);
-
-    thres_stop_array = new double[NUM_GROUP];
-    for(int i = 0 ;i < NUM_GROUP; i++)
-        thres_stop_array[i] = thres_stop;
     for(int i = 0; i < NUM_GROUP; i++){
         retFeature.push_back(vector<feature_node*>());
         retTargetval.push_back(vector<double>());
@@ -1329,8 +1308,9 @@ int classify_2(vector< vector<lable_node> > &lables, \
             for(int k = i * NUM_POSITIVE; k < i*NUM_POSITIVE+NUM_POSITIVE; k++){
                 retFeature[k].push_back(negGroups[i][j]);
                 retTargetval[k].push_back(-1);
+
             }
         }
     }
     return NUM_GROUP;
-}
+}*/
