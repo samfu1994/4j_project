@@ -282,9 +282,7 @@ int main(){
     int train_num = readData("data/train.txt",lables,features);
     int test_num = readData("data/test.txt",tLables,tFeatures);
     vector<double *> weight;
-    weight.resize(NUM_GROUP);
-    for(int i = 0; i < NUM_GROUP; i++)
-        weight[i] = new double[NUM_FEATURE];
+
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
 
@@ -301,10 +299,14 @@ int main(){
     }
     // classify trainning data
     classify_2(lables,features,gFeature,gTargetval);
-    printf("Finished classify\n");
+    printf("Finished classify, num_group is %d\n", NUM_GROUP);
     // train
-    printf("start training\n");
+    weight.resize(NUM_GROUP);
+    for(int i = 0; i < NUM_GROUP; i++)
+        weight[i] = new double[NUM_FEATURE];
+    printf("start training, NUM_GROUP is %d\n", NUM_GROUP);
     for(int i = 0; i < NUM_GROUP; i++){
+        printf("main:: group : %d\n", i);
         pool.addJob(lms_in,\
             new lmsParams(i, weight[i], gFeature[i], gTargetval[i]));
     }
@@ -333,7 +335,7 @@ int main(){
 }
 
 //neural network
-
+/*
 int main(){
     // rew train data
     srand(time(NULL));
@@ -524,11 +526,10 @@ void lms_train(int groupNum, double *weight, const int num_para , vector<feature
     printf("enter weight loop\n");
     for(int i = 0; i < num_para; i++){
         weight[i] = rand()/10;
-        printf("weight is %f, i is %d\n", weight[i], i);
-
         while(weight[i] >= ini)
             weight[i] /= 10;
         weight[i] -= ini/2;
+        //printf("weight is %f, i is %d\n", weight[i], i);
     }
     printf("initial over!\n");
     int num_sample = features.size();
@@ -1303,10 +1304,11 @@ int classify_2(vector< vector<lable_node> > &lables, \
            }
         }
     }
-    printf("NUM_GROUP is %d\n", NUM_GROUP);
     NUM_POSITIVE = (int)possGroups.size();
     NUM_NEGATIVE = (int)negGroups.size();
     NUM_GROUP = NUM_POSITIVE * NUM_NEGATIVE;
+    printf("classify_2 :::::::::::::::: NUM_GROUP is %d\n", NUM_GROUP);
+
     thres_stop_array = new double[NUM_GROUP];
     for(int i = 0 ;i < NUM_GROUP; i++)
         thres_stop_array[i] = thres_stop;
@@ -1330,5 +1332,5 @@ int classify_2(vector< vector<lable_node> > &lables, \
             }
         }
     }
-    return 0;
+    return NUM_GROUP;
 }
