@@ -9,13 +9,15 @@
 #include <cmath>
 #include "eigen/Eigen/Dense"
 //#include "eigen/unsupported/Eigen/MatrixFunctions"
+#include <iostream>
+
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::Matrix;
 using Eigen::VectorXd;
 const int input_layer_size = 5000;
-const int hidden_layer_size = 2;
-const int iteration_time = 1;
+const int hidden_layer_size = 3;
+const int iteration_time = 200;
 const int num_labels = 2;
 double thres_C = 0;
 double thres_stop = 1;
@@ -24,8 +26,8 @@ double ini = 0.001;
 const double lms_learning_rate = 0.0001;
 
 const int NUM_FEATURE = 5001;
-      int NUM_POSITIVE = 5;
-      int NUM_NEGATIVE = 15;
+      int NUM_POSITIVE = 1;
+      int NUM_NEGATIVE = 2;
       int NUM_GROUP    = NUM_NEGATIVE*NUM_POSITIVE;
 const double BIAS = 1;
 const feature_node endOfFeature = {-1,0};
@@ -334,6 +336,7 @@ void * lms_predict_in(void * p);
 }
 */
 //neural network
+ofstream fout("out.txt");
 
 int main(){
     // rew train data
@@ -376,7 +379,7 @@ int main(){
     pool.wait();
     // predict
     printf("start predicting\n");
-    predictTargetVal.reserve(tTargetval.size());
+    predictTargetVal.resize(tTargetval.size());
     for(unsigned int i = 0; i < tFeatures.size(); i++){
         pool.addJob(predictnnFunc,\
             new preadictnnParams(i, &gNode,tFeatures[i].data(),&(predictTargetVal[i]) ));
@@ -384,6 +387,7 @@ int main(){
     pool.wait();
     predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    printf("FINAL RESULT %f\n",(pr.TP+pr.TN)/(pr.TP+pr.TN + pr.FN+pr.FP) );
 
     pool.stop();
 
@@ -714,6 +718,7 @@ void * predictnnFunc(void *p){
     // MIN
     double t;
     for(int i = 0; i < NUM_POSITIVE; i++){
+        //printf("i is %d\n", i);
         MatrixXd * Theta1 = (*(pp -> node))[i] -> one;
         MatrixXd * Theta2 = (*(pp -> node))[i] -> two;
         MatrixXd * X = getX_single(current, ff);
@@ -726,6 +731,7 @@ void * predictnnFunc(void *p){
         }
         mins[i] = t;
     }
+    //delete X, y;
     // MAX
     t = mins[0];
     for(int i = 1;i < NUM_POSITIVE;i++){
@@ -863,11 +869,11 @@ MatrixXd * getX_single(int index, feature_node * features){
     MatrixXd * X = new MatrixXd(1, input_layer_size);
         int n = 0;
         for(int j = 0; j < input_layer_size; j++){
-            (*X)(1, j) = 0;
+            (*X)(0, j) = 0;
             if(features[n].index == -1)
                 continue;
             if(features[n].index == j){
-                (*X)(1, j) = features[n].value;
+                (*X)(0, j) = features[n].value;
                 n++;
             }
         }
@@ -926,24 +932,21 @@ cost_return_node *  nn_train(int index, vector<double> &lables, vector<feature_n
     //VectorXd * initial_param = unroll(Theta1, Theta2);
     int lamda = 1;
     MatrixXd * X = getX(index, features, l);
-        printf("here\n");
-
     VectorXd * y = getY(lables, l);
     int n = 0;
-    printf("enter loop\n");
     while(n < iteration_time){
         printf("n is %d\n", n);
         cost_return_node * crn = nnCostFunction(Theta1, Theta2, X, y, lamda, l);
         printf("theta1: %d * %d, one : %d * %d\n", Theta1 -> rows(), Theta1 -> cols(), crn -> one -> rows(), crn -> one ->cols());
         *Theta1 += alpha * *(crn -> one);
         *Theta2 += alpha * *(crn -> two);
-        delete crn;
+        delete crn -> one, crn -> two;
         n++;
     }
-    printf("quit loop\n");
     cost_return_node * para= new cost_return_node(0);
     para -> one = Theta1;
     para -> two = Theta2;
+    delete X, y;
     printf("quit nn _train\n");
     return para;
 
@@ -1022,9 +1025,11 @@ MatrixXd * mylog(MatrixXd * m){
     return ret;
 }
 MatrixXd * sigmoid(MatrixXd * mat){
-    MatrixXd * ret = new MatrixXd(mat -> rows(), mat -> cols());
-    ret = myexp(mat);
-    ret = myadd_and_inverse(ret);
+    MatrixXd * t;
+    MatrixXd * ret;// = new MatrixXd(mat -> rows(), mat -> cols());
+    t = myexp(mat);
+    ret = myadd_and_inverse(t);
+    delete t;
     return ret;
 }
 
@@ -1034,6 +1039,7 @@ MatrixXd *sigmoidGradient(MatrixXd * mat){
     return ret;
 }
 double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
+    //printf("enter predict_single\n");
      MatrixXd t(l,1);
     for(int i = 0; i < l; i++){
         t(i,0) = 1.0;
@@ -1052,12 +1058,23 @@ double predict_single(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorX
     *a2 << *t2, *old_a2;
     z3 = new MatrixXd(a2 -> rows(), Theta2 -> rows());
     * z3 = *a2 * (Theta2 -> transpose());
-    a3 = new MatrixXd(z3 -> rows(), z3 -> cols());
+    // a3 = new MatrixXd(z3 -> rows(), z3 -> cols());
     a3 = sigmoid(z3);
-    if(abs(1 - (*a3)(0,0)) < abs(1 - (*a3)(0, 1)) )
-        return 0;
-    else
+    fout << *a3 ;
+    if(((*a3)(0,0)) < ( (*a3)(0, 1)) ){
+        fout << "  " << -1 << endl;
+        return -1; 
+    }
+    else{
+        fout << " " << 1 << endl;
         return 1;
+    }
+    // if(abs(1 - (*a3)(0,0)) < abs(1 - (*a3)(0, 1)) )
+    //     return -1;
+    // else
+    //     return 1;
+    // cout << "predict one" << endl;
+    return 1;
 
 }
 double predict_func(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd * X,VectorXd * y, int lamda, int l){
@@ -1098,13 +1115,8 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
         t(i,0) = 1.0;
     }
     MatrixXd *a1, *z2, *old_a2, *a2, *t2, * z3, * a3, * yy, * tmp3, * tmp_a3, *tmp_tmp_a3, *tmp_yy, * tmp_add;
-        printf("22222222222222\n");
     a1 = new MatrixXd(X -> rows(), X -> cols() + 1);
-        printf("000000000000000\n");
-
     (*a1) << t, (*X);
-        printf("11111111111111111111\n");
-
     z2 = new MatrixXd(a1 -> rows(), Theta1 -> rows());
     *z2 = (*a1) * (Theta1 -> transpose());
     old_a2 = sigmoid(z2);
