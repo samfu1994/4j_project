@@ -22,7 +22,7 @@ const int num_labels = 2;
 
 const double alpha = 0.007;
 double thres_C = 0;
-double thres_stop = 1;
+double thres_stop = 0.5;
 double * thres_stop_array;
 double ini = 0.001;
 const double lms_learning_rate = 0.0001;
@@ -271,7 +271,7 @@ void * lms_in(void * p);
 void * lms_predict_in(void * p);
 /* functions */
 //lms
-/*int main(){
+int main(){
     // rew train data
     srand(time(NULL));
     vector<vector<feature_node> >       features;
@@ -299,7 +299,7 @@ void * lms_predict_in(void * p);
     getTargetVal(lables,targetVal);
     getTargetVal(tLables,tTargetval);
     // classify trainning data
-    classify(lables,features,gFeature,gTargetval);
+    classify_1(lables,features,gFeature,gTargetval);
     printf("Finished classify, num_group is %d\n", NUM_GROUP);
     thres_stop_array = new double[NUM_GROUP];
     for(int i = 0 ;i < NUM_GROUP; i++)
@@ -328,22 +328,23 @@ void * lms_predict_in(void * p);
     pool.wait();
     double tmp_accuracy = 0;
     for(int i = 0; i < test_num; i++){
+        // printf("%f\n", predictTargetVal[i]);
         if(predictTargetVal[i] == tTargetval[i])
             tmp_accuracy++;
     }
     tmp_accuracy /= double(test_num);
     printf("accuracy: %f\n", tmp_accuracy);
-    //predictResult pr = getPredictRes(tTargetval,predictTargetVal);
-    //printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+    printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
 
     pool.stop();
     return 0;
 
 }
-*/
+/**/
 //neural network
 ofstream fout("out.txt");
-
+/*
 int main(){
     // rew train data
     srand(time(NULL));
@@ -400,7 +401,7 @@ int main(){
     return 0;
 
 }
-
+*/
 //svm
 /*int main(){
     // rew train data
@@ -541,7 +542,8 @@ void lms_train(int groupNum, double *weight, const int num_para ,const vector<fe
     //printf("enter loop!\n");
     do{
         sum = 0;
-        for(int i = 0; i < num_sample ; i++){
+        for(int kk = 0; kk < num_sample ; kk++){
+            int i = (kk * 19991) % num_sample;
             raw_result = 0;
             int j = 0;
             while(features[i][j].index != -1){
@@ -565,7 +567,7 @@ void lms_train(int groupNum, double *weight, const int num_para ,const vector<fe
             }
         }
         sum /= num_sample;
-        //printf("sum is %f\n", sum);
+        printf("sum is %f\n", sum);
     }while(sum > thres_stop);
     //printf("quit\n");
     return;
@@ -1330,6 +1332,12 @@ int classify_1(vector< vector<lable_node> > &lables, \
             retTargetval[i].push_back(negVals[i][j]);
         }
     }
+    // for(int i = 0; i < retTargetval.size(); i++){
+    //     for (int j = 0; j < retTargetval[i].size(); ++j)
+    //     {
+    //         printf("%f \n", retTargetval[i][j]);
+    //     }
+    // }
     return 0;
 }
 
