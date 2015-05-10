@@ -184,14 +184,11 @@ int main(){
     // test var
     threads                             poll(8);
     // time measure
-    clock_t start;
-    clock_t end;
     timeval starttime,endtime;
     // read data
     readData("data/train.txt",lables,features);
     readData("data/test.txt",tLables,tFeatures);
 
-    start = clock();
     gettimeofday(&starttime,0);
 
     getTargetVal(lables,targetVal);
@@ -208,33 +205,15 @@ int main(){
     }
     poll.wait();
     printf("predict\n");
-    // predict
-    // predictTargetVal.reserve(tTargetval.size());
-    // for(unsigned int i = 0; i < tFeatures.size(); i++){
-    //     poll.addJob(predictThreadFunc,\
-    //         new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
-    // }
-    // poll.wait();
-    // predictResult pr = getPredictRes(tTargetval,predictTargetVal);
     predictResult pr;
 
-/*    vector<double> bias = autuRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc);
-    // get roc
-    printf("GETROC\n");
-    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
-    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
-        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
-    }
- */   
     new_getRoc(poll,tFeatures,tTargetval,gmodel,pr);
-    end = clock();
     gettimeofday(&endtime,0);
     double timeuse = 1000000*(endtime.tv_sec - starttime.tv_sec) + endtime.tv_usec - starttime.tv_usec;
     timeuse /=1000;
     
     printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
     printf("%f\n", (pr.TP+pr.TN)/(pr.TP+pr.TN+pr.FP+pr.FN));
-    printf("Time1: %f\n", ((double)(end- start)) / ((double)CLOCKS_PER_SEC) );
     printf("Time2: %f\n", timeuse );
     poll.stop();
     return 0;
@@ -332,103 +311,7 @@ void new_getRoc(threads &poll, \
     retVal.FP = pn.size()-n;
     retVal.calculate();
 }
-// make sure that there are enough 
-vector<double> autuRoc(threads &poll, \
-        vector<vector<feature_node> > &tFeatures, \
-        vector<double> &tTargetval,\
-        vector<model*> &gmodel, \
-        void*(*func)(void*) )
-{
-    vector< feature_node* > sampleFeatures;
-    vector<double> sampleTargetval;
-    vector<double> bias;
-    vector<double> sampleTPR;
-    vector<double> sampleFPR;
-    sampleFPR.push_back(1);
-    sampleFPR.push_back(0);
-    sampleTPR.push_back(1);
-    sampleTPR.push_back(0);
-    bias.push_back(-4);
-    bias.push_back(4);
-    int perm = 49597; // a large prime number to get the permution
-    int numTotalSize = (int)tFeatures.size();
-    int numSamples = numTotalSize / 40;
-    for(int i = 0; i < numSamples; i++){
-        sampleFeatures.push_back(tFeatures[(i * perm) % numTotalSize].data());
-        sampleTargetval.push_back(tTargetval[(i * perm) % numTotalSize]);
-    }
-    double diff;
-    double b;
-    int sapa;
-    vector<double> predictTargetVal;
-    predictTargetVal.reserve(sampleFeatures.size());
-    while(1){
-        sapa = 0;
-        for(int i = 1; i < (int)sampleTPR.size(); i++){
-            diff = sampleTPR[i-1] - sampleTPR[i];
-            diff = max(diff,  sampleFPR[i-1] - sampleFPR[i]);
-            if(diff > 0.2){
-                sapa = i;
-                break;
-            }
-        }
-        if(sapa){
-            b = (bias[sapa]+bias[sapa-1])/2;
-        }else{
-            break;
-        }
-        for(unsigned int i = 0; i < sampleFeatures.size(); i++){
-            poll.addJob(func,\
-                    new preadictThreadParams(&gmodel, \
-                            sampleFeatures[i], \
-                            &(predictTargetVal[i]), \
-                            b));
-        }
-        poll.wait();
-        predictResult pr = getPredictRes(sampleTargetval,predictTargetVal);
-        // printf("%f %f %f \n", b, pr.TPR, pr.FPR);
-        sampleFPR.insert(sampleFPR.begin()+sapa,pr.FPR);
-        sampleTPR.insert(sampleTPR.begin()+sapa,pr.TPR);
-        bias.insert(bias.begin()+sapa,b);
-    }
-    for(int i = 0; i < (int)bias.size();){
-        if((sampleFPR[i] == 1 && sampleTPR[i]==1) || (sampleFPR[i] == 0 && sampleTPR[i]==0)){
-            sampleFPR.erase(sampleFPR.begin()+i);
-            sampleTPR.erase(sampleTPR.begin()+i);
-            bias.erase(bias.begin()+i);
-        }else{
-            i++;
-        }
-    }
-    return bias;
-}
-void getRoc(threads &poll, \
-        vector<vector<feature_node> > &tFeatures, \
-        vector<double> &tTargetval,\
-        vector<model*> &gmodel, \
-        void*(*func)(void*), \
-        vector<double> &bias ,\
-        predictResult & retVal )
-{
-    vector<double> predictTargetVal;
-    predictTargetVal.clear();
-    predictTargetVal.reserve(tTargetval.size());
-    for(int j = 0; j < (int)bias.size(); j++){
-        for(unsigned int i = 0; i < tFeatures.size(); i++){
-            poll.addJob(func,\
-                    new preadictThreadParams(&gmodel, \
-                            tFeatures[i].data(), \
-                            &(predictTargetVal[i]), \
-                            bias[j]));
-        }
-        poll.wait();
-        predictResult pr = getPredictRes(tTargetval,predictTargetVal);
-        printf("rounf %d of %d ", j+1, (int)bias.size());
-        printf(" %f %f \n", pr.TPR, pr.FPR);
-        retVal.roc_tpr.push_back(pr.TPR);
-        retVal.roc_fpr.push_back(pr.FPR);
-    }
-}
+
 predictResult getPredictRes(vector<double> &targetVal, \
         vector<double> &predictTargetVal)
 {
