@@ -17,8 +17,9 @@ using Eigen::Matrix;
 using Eigen::VectorXd;
 const int input_layer_size = 5000;
 const int hidden_layer_size = 3;
-const int iteration_time = 200;
+const int iteration_time = 2;
 const int num_labels = 2;
+
 double thres_C = 0;
 double thres_stop = 1;
 double * thres_stop_array;
@@ -975,7 +976,7 @@ MatrixXd * myadd_and_inverse(MatrixXd * m){
     MatrixXd * ret = new MatrixXd(m -> rows(), m -> cols());
     for(int i = 0; i < m -> rows(); i++){
         for(int j = 0; j < m -> cols(); j++){
-            (*ret)(i, j) = (1 / (*m)(i, j) + 1);
+            (*ret)(i, j) = (1 / ((*m)(i, j) + 1) );
         }
     }
     return ret;
@@ -1164,7 +1165,7 @@ cost_return_node * nnCostFunction(MatrixXd * Theta1, MatrixXd * Theta2, MatrixXd
     s += (regu1 + regu2) * lamda / 2 / l;
     //
     MatrixXd delta3 = *a3 - *yy;
-    MatrixXd delta2 = (delta3 * (*Theta2)).cwiseProduct(tmp_z2);
+    MatrixXd delta2 = (delta3 * (*Theta2)).cwiseProduct(*(sigmoidGradient(&tmp_z2)));
     MatrixXd f_delta2(delta2.rows(), delta2.cols() - 1);
     for(int i = 0; i < f_delta2.rows(); i++)
         for(int j = 0;j < f_delta2.cols(); j++)
