@@ -49,6 +49,7 @@ void cross_validation(const struct problem *prob, const struct parameter *param,
 
 double predict_values(const struct model *model_, const struct feature_node *x, double* dec_values);
 double predict(const struct model *model_, const struct feature_node *x);
+double predict_roc(const struct model *model_, const struct feature_node *x,double bias);
 double predict_probability(const struct model *model_, const struct feature_node *x, double* prob_estimates);
 
 int save_model(const char *model_file_name, const struct model *model_);

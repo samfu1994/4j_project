@@ -62,10 +62,44 @@ struct preadictThreadParams{
     vector<model*> * mod;
     feature_node* f;
     double * retVal;
-    preadictThreadParams(vector<model*> *_mod, feature_node* _f,double*ret){
+    double bias;
+    preadictThreadParams(vector<model*> *_mod, \
+            feature_node* _f, \
+            double*ret, \
+            double _bias = 0){
         mod = _mod;
         f = _f;
         retVal = ret;
+        bias = _bias;
+    }
+};
+struct predictResult
+{
+    double TP;
+    double FP;
+    double TN;
+    double FN;
+    double TPR;
+    double FPR;
+    double F1;
+    double p;
+    double r;
+    vector<double> roc_tpr;
+    vector<double> roc_fpr;
+    predictResult(){
+        TP = 0;
+        FP = 0;
+        TN = 0;
+        FN = 0;
+        roc_fpr.clear();
+        roc_tpr.clear();
+    }
+    void calculate(){
+        TPR = TP / (TP + FN);
+        FPR = FP / (FP + TN);
+        p   = TP / (TP + FP);
+        r   = TP / (TP + FN);
+        F1  = 2 * r * p / (r + p);
     }
 };
 
@@ -104,6 +138,15 @@ int getGroupParam(vector< vector<feature_node* > > &gFeature , \
 );
 void * trainThreadFunc(void *);
 void * predictThreadFunc(void *);
+predictResult getPredictRes(vector<double> &targetVal, \
+        vector<double> &predictTargetVal);
+void getRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        void*(*func)(void*), \
+        std::vector<double> &bias ,\
+        predictResult & retVal );
 
 /* functions */
 int main(){
@@ -148,16 +191,80 @@ int main(){
         poll.addJob(predictThreadFunc,\
             new preadictThreadParams(&gmodel,tFeatures[i].data(),&(predictTargetVal[i]) ));
     }
-    poll.stop();
-    int classifyCorrect = 0;
-    for(int i = 0; i < (int)tTargetval.size();i++){
-        if(tTargetval[i] == predictTargetVal[i])
-            classifyCorrect++;
+    poll.wait();
+    predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+    printf("FINAL RESULT %f %f %f\n",pr.r, pr.p, pr.F1);
+    std::vector<double> bias;
+    bias.push_back(-2);
+    bias.push_back(-1);
+    bias.push_back(-0.5);
+    bias.push_back(-0.25);
+    bias.push_back(-0.125);
+    bias.push_back(0);
+    bias.push_back(0.125);
+    bias.push_back(0.25);
+    bias.push_back(0.5);
+    bias.push_back(0.75);
+    bias.push_back(1);
+    bias.push_back(1.125);
+    bias.push_back(1.25);
+
+    getRoc(poll,tFeatures,tTargetval,gmodel,predictThreadFunc,bias,pr);
+    for(int i = 0; i < (int)pr.roc_tpr.size(); i++){
+        printf("%f %f \n", pr.roc_tpr[i], pr.roc_fpr[i]);
     }
-    printf("FINAL RESULT %f\n",(double)classifyCorrect / (double)tTargetval.size());
+    poll.stop();
     return 0;
 }
-
+void getRoc(threads &poll, \
+        vector<vector<feature_node> > &tFeatures, \
+        vector<double> &tTargetval,\
+        vector<model*> &gmodel, \
+        void*(*func)(void*), \
+        std::vector<double> &bias ,\
+        predictResult & retVal )
+{
+    vector<double> predictTargetVal;
+    predictTargetVal.clear();
+    predictTargetVal.reserve(tTargetval.size());
+    for(int j = 0; j < (int)bias.size(); j++){
+        for(unsigned int i = 0; i < tFeatures.size(); i++){
+            poll.addJob(func,\
+                    new preadictThreadParams(&gmodel, \
+                            tFeatures[i].data(), \
+                            &(predictTargetVal[i]), \
+                            bias[j]));
+        }
+        poll.wait();
+        predictResult pr = getPredictRes(tTargetval,predictTargetVal);
+        printf("rounf %d of %d ", j+1, (int)bias.size());
+        printf(" %f %f \n", pr.TPR, pr.FPR);
+        retVal.roc_tpr.push_back(pr.TPR);
+        retVal.roc_fpr.push_back(pr.FPR);
+    }
+}
+predictResult getPredictRes(vector<double> &targetVal, \
+        vector<double> &predictTargetVal)
+{
+    predictResult pr;
+    for(int i = 0; i < (int)targetVal.size(); i++){
+        if(targetVal[i] == predictTargetVal[i]){
+            if(targetVal[i] > 0){
+                pr.TP++;
+            }else{
+                pr.TN++;
+            }
+        }else{
+            if(targetVal[i]>0){
+                pr.FN++;
+            }else{
+                pr.FP++;
+            }
+        }
+    }
+    pr.calculate();
+    return pr;
+}
 void * predictThreadFunc(void *p){
     preadictThreadParams *  pp = (preadictThreadParams*)p;
     vector<model*>&         mod = *(pp->mod);
@@ -166,9 +273,9 @@ void * predictThreadFunc(void *p){
     // MIN
     double t;
     for(int i = 0; i < NUM_POSITIVE; i++){
-        t = predict(mod[i],pp->f);
+        t = predict_roc(mod[i],pp->f,pp->bias);
         for(int j = i+NUM_POSITIVE; j < NUM_GROUP;j+=NUM_POSITIVE){
-            t = min(t,predict(mod[j],pp->f));
+            t = min(t,predict_roc(mod[j],pp->f,pp->bias));
         }
         mins[i] = t;
     }
